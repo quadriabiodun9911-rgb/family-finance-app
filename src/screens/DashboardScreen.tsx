@@ -25,6 +25,7 @@ const QUICK_LINKS: { key: keyof RootStackParamList; label: string; icon: any; de
     { key: 'IncomeInsights', label: 'Income Intelligence', icon: 'rocket', desc: 'Ways to grow household income' },
     { key: 'SavingsInvestments', label: 'Net Worth', icon: 'diamond', desc: 'Savings, investments & net worth' },
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses', desc: 'Financial health & affordability' },
+    { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half', desc: 'What could go wrong, and what to do' },
 ];
 
 export default function DashboardScreen() {

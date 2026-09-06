@@ -17,6 +17,7 @@ const ITEMS: { key: keyof RootStackParamList; label: string; icon: any }[] = [
     { key: 'Reports', label: 'Daily · Weekly · Monthly Reports', icon: 'newspaper' },
     { key: 'IncomeInsights', label: 'Income Intelligence', icon: 'rocket' },
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses' },
+    { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half' },
 ];
 
 export default function MoreScreen() {

@@ -11,6 +11,7 @@ export type RootStackParamList = {
     IncomeInsights: undefined;
     Coach: undefined;
     Household: undefined;
+    ImportStatement: undefined;
 };
 
 export type TabParamList = {

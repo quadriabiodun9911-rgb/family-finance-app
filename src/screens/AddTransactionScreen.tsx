@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
@@ -10,6 +11,7 @@ import { useFinance } from '../context/FinanceContext';
 import { RootStackParamList } from '../navigation/types';
 import { CategoryType, Ownership, RecurringFrequency } from '../types';
 import { todayISO } from '../utils/date';
+import { uploadReceiptImage } from '../utils/receiptStorage';
 
 export default function AddTransactionScreen() {
     const navigation = useNavigation();
@@ -25,13 +27,34 @@ export default function AddTransactionScreen() {
     const [incomeSourceId, setIncomeSourceId] = useState<string | null>(null);
     const [ownership, setOwnership] = useState<Ownership>('shared');
     const [isRecurring, setIsRecurring] = useState(false);
+    const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
     const relevantCategories = categories.filter((c) => c.type === type);
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     const canSave = !Number.isNaN(numericAmount) && numericAmount > 0 && !!categoryId;
 
-    const handleSave = () => {
-        if (!canSave || !categoryId) return;
+    const handlePickReceipt = async () => {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+            Alert.alert('Permission needed', 'Allow photo access to attach a receipt.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
+        if (!result.canceled && result.assets?.[0]?.uri) setReceiptUri(result.assets[0].uri);
+    };
+
+    const handleSave = async () => {
+        if (!canSave || !categoryId || !household) return;
+        setSaving(true);
+        let receiptUrl: string | undefined;
+        if (receiptUri) {
+            try {
+                receiptUrl = await uploadReceiptImage(household.id, receiptUri);
+            } catch (e: any) {
+                Alert.alert('Receipt upload failed', e?.message || 'Saving the transaction without it.');
+            }
+        }
         addTransaction({
             date: todayISO(),
             type,
@@ -44,6 +67,7 @@ export default function AddTransactionScreen() {
             description: description.trim(),
             isRecurring,
             recurringFrequency: isRecurring ? 'monthly' as RecurringFrequency : undefined,
+            receiptUrl,
         });
         navigation.goBack();
     };
@@ -118,7 +142,24 @@ export default function AddTransactionScreen() {
                     <Switch value={isRecurring} onValueChange={setIsRecurring} trackColor={{ true: Colors.primary }} />
                 </View>
 
-                <Button label="Save transaction" onPress={handleSave} disabled={!canSave} />
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Receipt (optional)</Text>
+                    {receiptUri ? (
+                        <View style={styles.receiptPreviewRow}>
+                            <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
+                            <Pressable onPress={() => setReceiptUri(null)} style={styles.receiptRemoveBtn}>
+                                <Ionicons name="close" size={16} color={Colors.textMuted} />
+                            </Pressable>
+                        </View>
+                    ) : (
+                        <Pressable style={styles.receiptPickBtn} onPress={handlePickReceipt}>
+                            <Ionicons name="camera-outline" size={18} color={Colors.textMuted} />
+                            <Text style={styles.receiptPickText}>Attach a photo</Text>
+                        </Pressable>
+                    )}
+                </View>
+
+                <Button label="Save transaction" onPress={handleSave} disabled={!canSave} loading={saving} />
             </ScrollView>
         </SafeAreaView>
     );
@@ -141,4 +182,9 @@ const styles = StyleSheet.create({
     chipText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
     chipTextActive: { color: Colors.primary },
     recurringRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    receiptPickBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed', backgroundColor: Colors.surfaceAlt },
+    receiptPickText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
+    receiptPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+    receiptThumb: { width: 64, height: 64, borderRadius: Radius.md, backgroundColor: Colors.surfaceAlt },
+    receiptRemoveBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
 });

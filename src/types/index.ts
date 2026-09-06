@@ -101,6 +101,7 @@ export interface Transaction {
     description: string;
     isRecurring: boolean;
     recurringFrequency?: RecurringFrequency;
+    receiptUrl?: string; // storage path in the 'receipts' bucket, resolved to a signed URL for display
     createdAt: string;
 }
 

@@ -11,6 +11,7 @@ import { defaultCategories } from '../utils/defaultData';
 import { todayISO, currentPeriod } from '../utils/date';
 import { useAuth } from './AuthContext';
 import { Colors } from '../theme/colors';
+import { uploadReceiptImage } from '../utils/receiptStorage';
 
 interface FinanceContextValue {
     isLoading: boolean;
@@ -49,6 +50,8 @@ interface FinanceContextValue {
     removeIncomeSource: (id: string) => void;
 
     addTransaction: (t: Omit<Transaction, 'id' | 'createdAt'>) => void;
+    bulkAddTransactions: (rows: Array<Omit<Transaction, 'id' | 'createdAt'>>) => Promise<{ error: string | null; count: number }>;
+    uploadReceiptForTransaction: (transactionId: string, localUri: string) => Promise<{ error: string | null }>;
     updateTransaction: (id: string, patch: Partial<Transaction>) => void;
     removeTransaction: (id: string) => void;
 
@@ -288,6 +291,34 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const debtCrud = useMemo(() => makeCrud<Debt>('debts', household?.id, setDebts), [household?.id]);
     const otherAssetCrud = useMemo(() => makeCrud<OtherAsset>('other_assets', household?.id, setOtherAssets), [household?.id]);
 
+    const bulkAddTransactions = useCallback(async (rows: Array<Omit<Transaction, 'id' | 'createdAt'>>): Promise<{ error: string | null; count: number }> => {
+        if (!household) return { error: 'No household yet.', count: 0 };
+        if (rows.length === 0) return { error: null, count: 0 };
+        try {
+            const { data, error } = await supabase.from('transactions')
+                .insert(rows.map((r) => toSnakeCase({ ...r, householdId: household.id })))
+                .select();
+            if (error) throw error;
+            const created = (data ?? []).map((row) => toCamelCase<Transaction>(row));
+            setTransactions((prev) => [...created, ...prev]);
+            return { error: null, count: created.length };
+        } catch (e: any) {
+            return { error: e?.message || 'Import failed.', count: 0 };
+        }
+    }, [household]);
+
+    const uploadReceiptForTransaction = useCallback(async (transactionId: string, localUri: string): Promise<{ error: string | null }> => {
+        if (!household) return { error: 'No household yet.' };
+        try {
+            const path = await uploadReceiptImage(household.id, localUri);
+            await updateRow('transactions', transactionId, { receiptUrl: path });
+            setTransactions((prev) => prev.map((t) => (t.id === transactionId ? { ...t, receiptUrl: path } : t)));
+            return { error: null };
+        } catch (e: any) {
+            return { error: e?.message || 'Could not upload receipt.' };
+        }
+    }, [household]);
+
     // ─── Budgets (upsert by category+period) ───────────────────────────────
     const setBudget = useCallback((categoryId: string, period: string, planned: number) => {
         if (!household) return;
@@ -359,6 +390,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         addAccount: accountCrud.add, updateAccount: accountCrud.update, removeAccount: accountCrud.remove,
         addIncomeSource: incomeSourceCrud.add, removeIncomeSource: incomeSourceCrud.remove,
         addTransaction: transactionCrud.add, updateTransaction: transactionCrud.update, removeTransaction: transactionCrud.remove,
+        bulkAddTransactions, uploadReceiptForTransaction,
         addRecurringBill: recurringBillCrud.add, removeRecurringBill: recurringBillCrud.remove,
         setBudget,
         addGoal, updateGoal, removeGoal, contributeToGoal,
@@ -372,6 +404,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         investments, debts, otherAssets, netWorthHistory,
         createHousehold, joinHousehold, inviteMember, removeMember,
         categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
+        bulkAddTransactions, uploadReceiptForTransaction,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,
         investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot,
     ]);

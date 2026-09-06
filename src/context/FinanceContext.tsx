@@ -1,18 +1,25 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import {
-    Household, HouseholdMember, Category, Account, IncomeSource, Transaction,
+    Household, HouseholdMember, HouseholdInvite, Category, Account, IncomeSource, Transaction,
     RecurringBill, Budget, FinancialGoal, GoalContribution, Investment, Debt, OtherAsset, NetWorthSnapshot,
+    MemberRole, MemberPermission,
 } from '../types';
-import { loadJSON, saveJSON, StorageKeys } from '../utils/storage';
-import { defaultCategories, defaultOwnerMember } from '../utils/defaultData';
-import { generateId } from '../utils/id';
-import { todayISO } from '../utils/date';
+import { supabase } from '../utils/supabaseClient';
+import { fetchAll, insertRow, updateRow, deleteRow } from '../utils/db';
+import { toCamelCase, toSnakeCase } from '../utils/caseConvert';
+import { defaultCategories } from '../utils/defaultData';
+import { todayISO, currentPeriod } from '../utils/date';
+import { useAuth } from './AuthContext';
+import { Colors } from '../theme/colors';
 
 interface FinanceContextValue {
     isLoading: boolean;
-    isOnboarded: boolean;
+    isOnboarded: boolean; // has a household
     household: Household | null;
     members: HouseholdMember[];
+    myMemberId: string | null;
+    myPermission: MemberPermission | null;
+    pendingInvites: HouseholdInvite[];
     categories: Category[];
     accounts: Account[];
     incomeSources: IncomeSource[];
@@ -25,9 +32,9 @@ interface FinanceContextValue {
     otherAssets: OtherAsset[];
     netWorthHistory: NetWorthSnapshot[];
 
-    completeOnboarding: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<void>;
-
-    addMember: (m: Omit<HouseholdMember, 'id' | 'createdAt'>) => void;
+    createHousehold: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<void>;
+    joinHousehold: (inviteCode: string, memberName: string) => Promise<{ error: string | null }>;
+    inviteMember: (email: string, role: MemberRole, permission: MemberPermission) => Promise<{ code: string | null; error: string | null }>;
     removeMember: (id: string) => void;
 
     addCategory: (c: Omit<Category, 'id'>) => void;
@@ -71,194 +78,296 @@ interface FinanceContextValue {
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
 
-function useCollection<T extends { id: string }>(key: string, initial: T[] = []) {
-    const [items, setItems] = useState<T[]>(initial);
-    const [loaded, setLoaded] = useState(false);
+function generateInviteCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+    let code = '';
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+}
 
-    useEffect(() => {
-        loadJSON<T[]>(key, initial).then((v) => {
-            setItems(v);
-            setLoaded(true);
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
-        if (loaded) saveJSON(key, items);
-    }, [items, loaded, key]);
-
-    return [items, setItems, loaded] as const;
+// Generic CRUD bound to one table + its React state setter -- covers every
+// household-scoped collection that doesn't need bespoke logic (goals and
+// budgets are handled separately: goals carry a nested contributions array,
+// budgets need upsert-by-period semantics).
+function makeCrud<T extends { id: string }>(table: string, householdId: string | undefined, setState: React.Dispatch<React.SetStateAction<T[]>>) {
+    return {
+        add: (extra: Record<string, unknown>) => {
+            if (!householdId) return;
+            insertRow<T>(table, { ...extra, householdId }).then((created) => {
+                setState((prev) => [created, ...prev]);
+            }).catch((e) => console.warn(`${table} insert failed`, e.message));
+        },
+        update: (id: string, patch: Record<string, unknown>) => {
+            updateRow(table, id, patch).then(() => {
+                setState((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } as T : item)));
+            }).catch((e) => console.warn(`${table} update failed`, e.message));
+        },
+        remove: (id: string) => {
+            deleteRow(table, id).then(() => {
+                setState((prev) => prev.filter((item) => item.id !== id));
+            }).catch((e) => console.warn(`${table} delete failed`, e.message));
+        },
+    };
 }
 
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
+    const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
-    const [isOnboarded, setIsOnboarded] = useState(false);
     const [household, setHousehold] = useState<Household | null>(null);
+    const [myMemberId, setMyMemberId] = useState<string | null>(null);
+    const [myPermission, setMyPermission] = useState<MemberPermission | null>(null);
+    const [members, setMembers] = useState<HouseholdMember[]>([]);
+    const [pendingInvites, setPendingInvites] = useState<HouseholdInvite[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+    const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [goals, setGoals] = useState<FinancialGoal[]>([]);
+    const [investments, setInvestments] = useState<Investment[]>([]);
+    const [debts, setDebts] = useState<Debt[]>([]);
+    const [otherAssets, setOtherAssets] = useState<OtherAsset[]>([]);
+    const [netWorthHistory, setNetWorthHistory] = useState<NetWorthSnapshot[]>([]);
 
-    const [members, setMembers] = useCollection<HouseholdMember>(StorageKeys.members);
-    const [categories, setCategories] = useCollection<Category>(StorageKeys.categories);
-    const [accounts, setAccounts] = useCollection<Account>(StorageKeys.accounts);
-    const [incomeSources, setIncomeSources] = useCollection<IncomeSource>(StorageKeys.incomeSources);
-    const [transactions, setTransactions] = useCollection<Transaction>(StorageKeys.transactions);
-    const [recurringBills, setRecurringBills] = useCollection<RecurringBill>(StorageKeys.recurringBills);
-    const [budgets, setBudgets] = useCollection<Budget>(StorageKeys.budgets);
-    const [goals, setGoals] = useCollection<FinancialGoal>(StorageKeys.goals);
-    const [investments, setInvestments] = useCollection<Investment>(StorageKeys.investments);
-    const [debts, setDebts] = useCollection<Debt>(StorageKeys.debts);
-    const [otherAssets, setOtherAssets] = useCollection<OtherAsset>(StorageKeys.otherAssets);
-    const [netWorthHistory, setNetWorthHistory] = useCollection<NetWorthSnapshot>(StorageKeys.netWorthHistory);
+    const loadEverything = useCallback(async (hh: Household, memberId: string, permission: MemberPermission) => {
+        const [
+            membersRows, invitesRows, categoriesRows, accountsRows, incomeSourcesRows,
+            transactionsRows, recurringBillsRows, budgetsRows, goalsRows, investmentsRows,
+            debtsRows, otherAssetsRows, netWorthRows,
+        ] = await Promise.all([
+            fetchAll<HouseholdMember>('household_members', hh.id),
+            fetchAll<HouseholdInvite>('household_invites', hh.id).catch(() => [] as HouseholdInvite[]),
+            fetchAll<Category>('categories', hh.id),
+            fetchAll<Account>('accounts', hh.id),
+            fetchAll<IncomeSource>('income_sources', hh.id),
+            fetchAll<Transaction>('transactions', hh.id, { column: 'date', ascending: false }),
+            fetchAll<RecurringBill>('recurring_bills', hh.id),
+            fetchAll<Budget>('budgets', hh.id),
+            fetchAll<Omit<FinancialGoal, 'contributions'>>('goals', hh.id),
+            fetchAll<Investment>('investments', hh.id),
+            fetchAll<Debt>('debts', hh.id),
+            fetchAll<OtherAsset>('other_assets', hh.id),
+            fetchAll<NetWorthSnapshot>('net_worth_snapshots', hh.id, { column: 'date', ascending: true }),
+        ]);
 
-    useEffect(() => {
-        (async () => {
-            const savedHousehold = await loadJSON<Household | null>(StorageKeys.household, null);
-            const onboarded = await loadJSON<boolean>(StorageKeys.onboarded, false);
-            setHousehold(savedHousehold);
-            setIsOnboarded(onboarded);
-            setIsLoading(false);
-        })();
+        const goalIds = goalsRows.map((g) => g.id);
+        let contributionsByGoal = new Map<string, GoalContribution[]>();
+        if (goalIds.length > 0) {
+            const { data, error } = await supabase.from('goal_contributions').select('*').in('goal_id', goalIds).order('date', { ascending: false });
+            if (!error && data) {
+                for (const row of data) {
+                    const c = toCamelCase<GoalContribution & { goalId: string }>(row);
+                    const list = contributionsByGoal.get(c.goalId) || [];
+                    list.push(c);
+                    contributionsByGoal.set(c.goalId, list);
+                }
+            }
+        }
+        const goalsWithContributions: FinancialGoal[] = goalsRows.map((g) => ({
+            ...g, contributions: contributionsByGoal.get(g.id) || [],
+        }));
+
+        setMembers(membersRows);
+        setPendingInvites(invitesRows.filter((i) => i.status === 'pending'));
+        setCategories(categoriesRows);
+        setAccounts(accountsRows);
+        setIncomeSources(incomeSourcesRows);
+        setTransactions(transactionsRows);
+        setRecurringBills(recurringBillsRows);
+        setBudgets(budgetsRows);
+        setGoals(goalsWithContributions);
+        setInvestments(investmentsRows);
+        setDebts(debtsRows);
+        setOtherAssets(otherAssetsRows);
+        setNetWorthHistory(netWorthRows);
+        setHousehold(hh);
+        setMyMemberId(memberId);
+        setMyPermission(permission);
     }, []);
 
-    const completeOnboarding = useCallback(async (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => {
-        const h: Household = { name: householdName, currencyCode, currencySymbol, createdAt: new Date().toISOString() };
-        setHousehold(h);
-        setMembers([defaultOwnerMember(ownerName)]);
-        setCategories(defaultCategories());
-        setIsOnboarded(true);
-        await saveJSON(StorageKeys.household, h);
-        await saveJSON(StorageKeys.onboarded, true);
-    }, [setMembers, setCategories]);
+    const bootstrap = useCallback(async () => {
+        if (!user) {
+            setHousehold(null); setMyMemberId(null); setMyPermission(null);
+            setMembers([]); setPendingInvites([]); setCategories([]); setAccounts([]); setIncomeSources([]);
+            setTransactions([]); setRecurringBills([]); setBudgets([]); setGoals([]); setInvestments([]);
+            setDebts([]); setOtherAssets([]); setNetWorthHistory([]);
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
+        const { data: memberRow, error: memberErr } = await supabase
+            .from('household_members').select('*').eq('user_id', user.id).limit(1).maybeSingle();
+        if (memberErr || !memberRow) {
+            setHousehold(null);
+            setIsLoading(false);
+            return;
+        }
+        const member = toCamelCase<HouseholdMember>(memberRow);
+        const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', (memberRow as any).household_id).single();
+        if (hhErr || !hhRow) {
+            setHousehold(null);
+            setIsLoading(false);
+            return;
+        }
+        const hh = toCamelCase<Household>(hhRow);
+        await loadEverything(hh, member.id, member.permission);
+        setIsLoading(false);
+    }, [user, loadEverything]);
 
-    // ─── Members ────────────────────────────────────────────────────────────
-    const addMember = useCallback((m: Omit<HouseholdMember, 'id' | 'createdAt'>) => {
-        setMembers((prev) => [...prev, { ...m, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setMembers]);
-    const removeMember = useCallback((id: string) => setMembers((prev) => prev.filter((m) => m.id !== id)), [setMembers]);
+    useEffect(() => { bootstrap(); }, [bootstrap]);
 
-    // ─── Categories ─────────────────────────────────────────────────────────
-    const addCategory = useCallback((c: Omit<Category, 'id'>) => {
-        setCategories((prev) => [...prev, { ...c, id: generateId() }]);
-    }, [setCategories]);
-    const updateCategory = useCallback((id: string, patch: Partial<Category>) => {
-        setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-    }, [setCategories]);
-    const removeCategory = useCallback((id: string) => setCategories((prev) => prev.filter((c) => c.id !== id)), [setCategories]);
+    // ─── Household lifecycle ────────────────────────────────────────────────
+    const createHousehold = useCallback(async (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => {
+        if (!user) return;
+        const hhRow = await insertRow<Household>('households', { name: householdName, currencyCode, currencySymbol, ownerId: user.id });
+        const memberRow = await insertRow<HouseholdMember>('household_members', {
+            householdId: hhRow.id, userId: user.id, name: ownerName, role: 'owner', permission: 'full', color: Colors.memberPalette[0],
+        });
+        const cats = defaultCategories();
+        await supabase.from('categories').insert(cats.map((c) => toSnakeCase({ ...c, householdId: hhRow.id })));
+        await loadEverything(hhRow, memberRow.id, 'full');
+    }, [user, loadEverything]);
 
-    // ─── Accounts ───────────────────────────────────────────────────────────
-    const addAccount = useCallback((a: Omit<Account, 'id' | 'createdAt'>) => {
-        setAccounts((prev) => [...prev, { ...a, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setAccounts]);
-    const updateAccount = useCallback((id: string, patch: Partial<Account>) => {
-        setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
-    }, [setAccounts]);
-    const removeAccount = useCallback((id: string) => setAccounts((prev) => prev.filter((a) => a.id !== id)), [setAccounts]);
+    const joinHousehold = useCallback(async (inviteCode: string, memberName: string): Promise<{ error: string | null }> => {
+        if (!user) return { error: 'Not signed in.' };
+        const code = inviteCode.trim().toUpperCase();
+        const { data: inviteRow, error: findErr } = await supabase
+            .from('household_invites').select('*').eq('invite_code', code).eq('status', 'pending').maybeSingle();
+        if (findErr || !inviteRow) return { error: 'Invite code not found or already used.' };
+        const invite = toCamelCase<HouseholdInvite>(inviteRow);
+        const paletteIndex = (await supabase.from('household_members').select('id', { count: 'exact', head: true }).eq('household_id', invite.householdId)).count ?? 0;
+        try {
+            const memberRow = await insertRow<HouseholdMember>('household_members', {
+                householdId: invite.householdId, userId: user.id, name: memberName,
+                role: invite.role, permission: invite.permission, color: Colors.memberPalette[paletteIndex % Colors.memberPalette.length],
+            });
+            await updateRow('household_invites', invite.id, { status: 'accepted' });
+            const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', invite.householdId).single();
+            if (hhErr || !hhRow) return { error: 'Joined, but could not load the household. Try restarting the app.' };
+            await loadEverything(toCamelCase<Household>(hhRow), memberRow.id, invite.permission);
+            return { error: null };
+        } catch (e: any) {
+            return { error: e.message || 'Could not join that household.' };
+        }
+    }, [user, loadEverything]);
 
-    // ─── Income sources ─────────────────────────────────────────────────────
-    const addIncomeSource = useCallback((s: Omit<IncomeSource, 'id' | 'createdAt'>) => {
-        setIncomeSources((prev) => [...prev, { ...s, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setIncomeSources]);
-    const removeIncomeSource = useCallback((id: string) => setIncomeSources((prev) => prev.filter((s) => s.id !== id)), [setIncomeSources]);
+    const inviteMember = useCallback(async (email: string, role: MemberRole, permission: MemberPermission): Promise<{ code: string | null; error: string | null }> => {
+        if (!household || !user) return { code: null, error: 'No household yet.' };
+        const code = generateInviteCode();
+        try {
+            const invite = await insertRow<HouseholdInvite>('household_invites', {
+                householdId: household.id, email: email.trim().toLowerCase(), role, permission, inviteCode: code, invitedBy: user.id,
+            });
+            setPendingInvites((prev) => [...prev, invite]);
+            return { code, error: null };
+        } catch (e: any) {
+            return { code: null, error: e.message || 'Could not create invite.' };
+        }
+    }, [household, user]);
 
-    // ─── Transactions ───────────────────────────────────────────────────────
-    const addTransaction = useCallback((t: Omit<Transaction, 'id' | 'createdAt'>) => {
-        setTransactions((prev) => [{ ...t, id: generateId(), createdAt: new Date().toISOString() }, ...prev]);
-    }, [setTransactions]);
-    const updateTransaction = useCallback((id: string, patch: Partial<Transaction>) => {
-        setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-    }, [setTransactions]);
-    const removeTransaction = useCallback((id: string) => setTransactions((prev) => prev.filter((t) => t.id !== id)), [setTransactions]);
+    const removeMember = useCallback((id: string) => {
+        deleteRow('household_members', id).then(() => {
+            setMembers((prev) => prev.filter((m) => m.id !== id));
+        }).catch((e) => console.warn('remove member failed', e.message));
+    }, []);
 
-    // ─── Recurring bills ────────────────────────────────────────────────────
-    const addRecurringBill = useCallback((b: Omit<RecurringBill, 'id' | 'createdAt'>) => {
-        setRecurringBills((prev) => [...prev, { ...b, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setRecurringBills]);
-    const removeRecurringBill = useCallback((id: string) => setRecurringBills((prev) => prev.filter((b) => b.id !== id)), [setRecurringBills]);
+    // ─── Generic collections ────────────────────────────────────────────────
+    const categoryCrud = useMemo(() => makeCrud<Category>('categories', household?.id, setCategories), [household?.id]);
+    const accountCrud = useMemo(() => makeCrud<Account>('accounts', household?.id, setAccounts), [household?.id]);
+    const incomeSourceCrud = useMemo(() => makeCrud<IncomeSource>('income_sources', household?.id, setIncomeSources), [household?.id]);
+    const transactionCrud = useMemo(() => makeCrud<Transaction>('transactions', household?.id, setTransactions), [household?.id]);
+    const recurringBillCrud = useMemo(() => makeCrud<RecurringBill>('recurring_bills', household?.id, setRecurringBills), [household?.id]);
+    const investmentCrud = useMemo(() => makeCrud<Investment>('investments', household?.id, setInvestments), [household?.id]);
+    const debtCrud = useMemo(() => makeCrud<Debt>('debts', household?.id, setDebts), [household?.id]);
+    const otherAssetCrud = useMemo(() => makeCrud<OtherAsset>('other_assets', household?.id, setOtherAssets), [household?.id]);
 
-    // ─── Budgets ────────────────────────────────────────────────────────────
+    // ─── Budgets (upsert by category+period) ───────────────────────────────
     const setBudget = useCallback((categoryId: string, period: string, planned: number) => {
-        setBudgets((prev) => {
-            const existing = prev.find((b) => b.categoryId === categoryId && b.period === period);
-            if (existing) return prev.map((b) => (b.id === existing.id ? { ...b, planned } : b));
-            return [...prev, { id: generateId(), categoryId, period, planned }];
-        });
-    }, [setBudgets]);
+        if (!household) return;
+        supabase.from('budgets')
+            .upsert(toSnakeCase({ householdId: household.id, categoryId, period, planned }), { onConflict: 'household_id,category_id,period' })
+            .select().single()
+            .then(({ data, error }) => {
+                if (error || !data) { console.warn('budget upsert failed', error?.message); return; }
+                const row = toCamelCase<Budget>(data);
+                setBudgets((prev) => (prev.some((b) => b.id === row.id) ? prev.map((b) => (b.id === row.id ? row : b)) : [...prev, row]));
+            });
+    }, [household]);
 
-    // ─── Goals ──────────────────────────────────────────────────────────────
+    // ─── Goals (nested contributions) ──────────────────────────────────────
     const addGoal = useCallback((g: Omit<FinancialGoal, 'id' | 'createdAt' | 'contributions'>) => {
-        setGoals((prev) => [...prev, { ...g, id: generateId(), createdAt: new Date().toISOString(), contributions: [] }]);
-    }, [setGoals]);
+        if (!household) return;
+        insertRow<FinancialGoal>('goals', { ...g, householdId: household.id }).then((created) => {
+            setGoals((prev) => [...prev, { ...created, contributions: [] }]);
+        }).catch((e) => console.warn('goal insert failed', e.message));
+    }, [household]);
+
     const updateGoal = useCallback((id: string, patch: Partial<FinancialGoal>) => {
-        setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
-    }, [setGoals]);
-    const removeGoal = useCallback((id: string) => setGoals((prev) => prev.filter((g) => g.id !== id)), [setGoals]);
+        updateRow('goals', id, patch).then(() => {
+            setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+        }).catch((e) => console.warn('goal update failed', e.message));
+    }, []);
+
+    const removeGoal = useCallback((id: string) => {
+        deleteRow('goals', id).then(() => {
+            setGoals((prev) => prev.filter((g) => g.id !== id));
+        }).catch((e) => console.warn('goal delete failed', e.message));
+    }, []);
+
     const contributeToGoal = useCallback((id: string, amount: number, note?: string) => {
-        const contribution: GoalContribution = { id: generateId(), date: todayISO(), amount, note };
-        setGoals((prev) => prev.map((g) => (g.id === id
-            ? { ...g, currentValue: g.currentValue + amount, contributions: [contribution, ...g.contributions] }
-            : g)));
-    }, [setGoals]);
+        const goal = goals.find((g) => g.id === id);
+        if (!goal) return;
+        insertRow<GoalContribution>('goal_contributions', { goalId: id, date: todayISO(), amount, note }).then(async (contribution) => {
+            const newValue = goal.currentValue + amount;
+            await updateRow('goals', id, { currentValue: newValue });
+            setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, currentValue: newValue, contributions: [contribution, ...g.contributions] } : g)));
+        }).catch((e) => console.warn('contribution failed', e.message));
+    }, [goals]);
 
-    // ─── Investments ────────────────────────────────────────────────────────
-    const addInvestment = useCallback((i: Omit<Investment, 'id' | 'createdAt' | 'updatedAt'>) => {
-        const now = new Date().toISOString();
-        setInvestments((prev) => [...prev, { ...i, id: generateId(), createdAt: now, updatedAt: now }]);
-    }, [setInvestments]);
-    const updateInvestment = useCallback((id: string, patch: Partial<Investment>) => {
-        setInvestments((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: new Date().toISOString() } : i)));
-    }, [setInvestments]);
-    const removeInvestment = useCallback((id: string) => setInvestments((prev) => prev.filter((i) => i.id !== id)), [setInvestments]);
-
-    // ─── Debts ──────────────────────────────────────────────────────────────
-    const addDebt = useCallback((d: Omit<Debt, 'id' | 'createdAt'>) => {
-        setDebts((prev) => [...prev, { ...d, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setDebts]);
-    const updateDebt = useCallback((id: string, patch: Partial<Debt>) => {
-        setDebts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-    }, [setDebts]);
-    const removeDebt = useCallback((id: string) => setDebts((prev) => prev.filter((d) => d.id !== id)), [setDebts]);
-
-    // ─── Other assets ───────────────────────────────────────────────────────
-    const addOtherAsset = useCallback((a: Omit<OtherAsset, 'id' | 'createdAt'>) => {
-        setOtherAssets((prev) => [...prev, { ...a, id: generateId(), createdAt: new Date().toISOString() }]);
-    }, [setOtherAssets]);
-    const removeOtherAsset = useCallback((id: string) => setOtherAssets((prev) => prev.filter((a) => a.id !== id)), [setOtherAssets]);
-
-    // ─── Net worth history ──────────────────────────────────────────────────
+    // ─── Net worth snapshots (one row per calendar month) ──────────────────
     const recordNetWorthSnapshot = useCallback((totalAssets: number, totalLiabilities: number) => {
-        const today = todayISO();
-        const period = today.slice(0, 7);
-        setNetWorthHistory((prev) => {
-            const withoutThisMonth = prev.filter((s) => s.date.slice(0, 7) !== period);
-            return [...withoutThisMonth, {
-                id: generateId(), date: today, totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities,
-            }].sort((a, b) => a.date.localeCompare(b.date));
-        });
-    }, [setNetWorthHistory]);
+        if (!household) return;
+        const monthDate = `${currentPeriod()}-01`;
+        supabase.from('net_worth_snapshots')
+            .upsert(toSnakeCase({
+                householdId: household.id, date: monthDate, totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities,
+            }), { onConflict: 'household_id,date' })
+            .select().single()
+            .then(({ data, error }) => {
+                if (error || !data) return;
+                const row = toCamelCase<NetWorthSnapshot>(data);
+                setNetWorthHistory((prev) => {
+                    const rest = prev.filter((s) => s.date !== row.date);
+                    return [...rest, row].sort((a, b) => a.date.localeCompare(b.date));
+                });
+            });
+    }, [household]);
 
     const value = useMemo<FinanceContextValue>(() => ({
-        isLoading, isOnboarded, household, members, categories, accounts, incomeSources,
-        transactions, recurringBills, budgets, goals, investments, debts, otherAssets, netWorthHistory,
-        completeOnboarding,
-        addMember, removeMember,
-        addCategory, updateCategory, removeCategory,
-        addAccount, updateAccount, removeAccount,
-        addIncomeSource, removeIncomeSource,
-        addTransaction, updateTransaction, removeTransaction,
-        addRecurringBill, removeRecurringBill,
+        isLoading, isOnboarded: !!household, household, members, myMemberId, myPermission, pendingInvites,
+        categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
+        investments, debts, otherAssets, netWorthHistory,
+        createHousehold, joinHousehold, inviteMember, removeMember,
+        addCategory: categoryCrud.add, updateCategory: categoryCrud.update, removeCategory: categoryCrud.remove,
+        addAccount: accountCrud.add, updateAccount: accountCrud.update, removeAccount: accountCrud.remove,
+        addIncomeSource: incomeSourceCrud.add, removeIncomeSource: incomeSourceCrud.remove,
+        addTransaction: transactionCrud.add, updateTransaction: transactionCrud.update, removeTransaction: transactionCrud.remove,
+        addRecurringBill: recurringBillCrud.add, removeRecurringBill: recurringBillCrud.remove,
         setBudget,
         addGoal, updateGoal, removeGoal, contributeToGoal,
-        addInvestment, updateInvestment, removeInvestment,
-        addDebt, updateDebt, removeDebt,
-        addOtherAsset, removeOtherAsset,
+        addInvestment: investmentCrud.add, updateInvestment: investmentCrud.update, removeInvestment: investmentCrud.remove,
+        addDebt: debtCrud.add, updateDebt: debtCrud.update, removeDebt: debtCrud.remove,
+        addOtherAsset: otherAssetCrud.add, removeOtherAsset: otherAssetCrud.remove,
         recordNetWorthSnapshot,
     }), [
-        isLoading, isOnboarded, household, members, categories, accounts, incomeSources,
-        transactions, recurringBills, budgets, goals, investments, debts, otherAssets, netWorthHistory,
-        completeOnboarding, addMember, removeMember, addCategory, updateCategory, removeCategory,
-        addAccount, updateAccount, removeAccount, addIncomeSource, removeIncomeSource,
-        addTransaction, updateTransaction, removeTransaction, addRecurringBill, removeRecurringBill,
+        isLoading, household, members, myMemberId, myPermission, pendingInvites,
+        categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
+        investments, debts, otherAssets, netWorthHistory,
+        createHousehold, joinHousehold, inviteMember, removeMember,
+        categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,
-        addInvestment, updateInvestment, removeInvestment, addDebt, updateDebt, removeDebt,
-        addOtherAsset, removeOtherAsset, recordNetWorthSnapshot,
+        investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot,
     ]);
 
     return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

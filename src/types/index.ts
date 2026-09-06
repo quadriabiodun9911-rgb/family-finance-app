@@ -7,6 +7,7 @@ export type MemberPermission = 'full' | 'shared' | 'own';
 
 export interface HouseholdMember {
     id: string;
+    userId?: string; // the Supabase auth user this member row belongs to; unset only in legacy local-only data
     name: string;
     role: MemberRole;
     permission: MemberPermission;
@@ -15,9 +16,27 @@ export interface HouseholdMember {
 }
 
 export interface Household {
+    id: string;
+    ownerId?: string;
     name: string;
     currencyCode: string; // ISO code, e.g. 'NGN', 'USD'
     currencySymbol: string;
+    createdAt: string;
+}
+
+export type InviteStatus = 'pending' | 'accepted';
+
+// A household owner's standing offer for someone to join by entering
+// `inviteCode` on the Join Household screen — see HouseholdContext.joinHousehold.
+export interface HouseholdInvite {
+    id: string;
+    householdId: string;
+    email: string;
+    role: MemberRole;
+    permission: MemberPermission;
+    inviteCode: string;
+    invitedBy: string;
+    status: InviteStatus;
     createdAt: string;
 }
 

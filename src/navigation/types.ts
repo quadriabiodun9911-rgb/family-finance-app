@@ -1,5 +1,6 @@
 export type RootStackParamList = {
-    Onboarding: undefined;
+    Auth: undefined;
+    HouseholdSetup: undefined;
     Tabs: undefined;
     AddTransaction: { type?: 'income' | 'expense' } | undefined;
     AddGoal: undefined;

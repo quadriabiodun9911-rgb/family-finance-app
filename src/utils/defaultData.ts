@@ -1,7 +1,10 @@
-import { Category, HouseholdMember } from '../types';
-import { generateId } from './id';
+import { Category } from '../types';
 
-export function defaultCategories(): Category[] {
+// No `id` here -- these get inserted straight into Supabase at household
+// creation (see FinanceContext.createHousehold), and the `categories` table
+// generates its own uuid primary key. A client-generated id would collide
+// with the column's `uuid` type.
+export function defaultCategories(): Array<Omit<Category, 'id'>> {
     const expense: Array<[string, string, string, number?]> = [
         ['Housing', 'home', '#60a5fa', undefined],
         ['Groceries', 'cart', '#34d399', undefined],
@@ -25,21 +28,10 @@ export function defaultCategories(): Category[] {
     ];
     return [
         ...expense.map(([name, icon, color, target]) => ({
-            id: generateId(), name, type: 'expense' as const, icon, color, monthlyTarget: target, isDefault: true,
+            name, type: 'expense' as const, icon, color, monthlyTarget: target, isDefault: true,
         })),
         ...income.map(([name, icon, color]) => ({
-            id: generateId(), name, type: 'income' as const, icon, color, isDefault: true,
+            name, type: 'income' as const, icon, color, isDefault: true,
         })),
     ];
-}
-
-export function defaultOwnerMember(name: string): HouseholdMember {
-    return {
-        id: generateId(),
-        name,
-        role: 'owner',
-        permission: 'full',
-        color: '#3b82f6',
-        createdAt: new Date().toISOString(),
-    };
 }

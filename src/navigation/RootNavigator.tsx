@@ -4,8 +4,10 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Colors } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from './types';
-import OnboardingScreen from '../screens/OnboardingScreen';
+import AuthScreen from '../screens/AuthScreen';
+import HouseholdSetupScreen from '../screens/HouseholdSetupScreen';
 import TabNavigator from './TabNavigator';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 import AddGoalScreen from '../screens/AddGoalScreen';
@@ -25,9 +27,10 @@ const navTheme = {
 };
 
 export default function RootNavigator() {
-    const { isLoading, isOnboarded } = useFinance();
+    const { isLoading: authLoading, session } = useAuth();
+    const { isLoading: financeLoading, isOnboarded } = useFinance();
 
-    if (isLoading) {
+    if (authLoading || (session && financeLoading)) {
         return (
             <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' }}>
                 <ActivityIndicator size="large" color={Colors.primary} />
@@ -38,8 +41,10 @@ export default function RootNavigator() {
     return (
         <NavigationContainer theme={navTheme}>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
-                {!isOnboarded ? (
-                    <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+                {!session ? (
+                    <Stack.Screen name="Auth" component={AuthScreen} />
+                ) : !isOnboarded ? (
+                    <Stack.Screen name="HouseholdSetup" component={HouseholdSetupScreen} />
                 ) : (
                     <>
                         <Stack.Screen name="Tabs" component={TabNavigator} />

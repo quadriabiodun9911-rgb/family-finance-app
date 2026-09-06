@@ -12,6 +12,9 @@ export interface HouseholdMember {
     role: MemberRole;
     permission: MemberPermission;
     color: string;
+    currentStreak: number; // consecutive days this member has opened the app
+    longestStreak: number;
+    lastActiveDate?: string; // ISO date of the last day the streak was updated
     createdAt: string;
 }
 

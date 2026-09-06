@@ -8,7 +8,7 @@ import { supabase } from '../utils/supabaseClient';
 import { fetchAll, insertRow, updateRow, deleteRow } from '../utils/db';
 import { toCamelCase, toSnakeCase } from '../utils/caseConvert';
 import { defaultCategories } from '../utils/defaultData';
-import { todayISO, currentPeriod } from '../utils/date';
+import { todayISO, currentPeriod, addDaysISO } from '../utils/date';
 import { useAuth } from './AuthContext';
 import { Colors } from '../theme/colors';
 import { uploadReceiptImage } from '../utils/receiptStorage';
@@ -32,6 +32,8 @@ interface FinanceContextValue {
     debts: Debt[];
     otherAssets: OtherAsset[];
     netWorthHistory: NetWorthSnapshot[];
+    seenMilestoneKeys: string[];
+    recordMilestones: (keys: string[]) => Promise<void>;
 
     createHousehold: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<{ error: string | null }>;
     joinHousehold: (inviteCode: string, memberName: string) => Promise<{ error: string | null }>;
@@ -132,12 +134,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const [debts, setDebts] = useState<Debt[]>([]);
     const [otherAssets, setOtherAssets] = useState<OtherAsset[]>([]);
     const [netWorthHistory, setNetWorthHistory] = useState<NetWorthSnapshot[]>([]);
+    const [seenMilestoneKeys, setSeenMilestoneKeys] = useState<string[]>([]);
 
     const loadEverything = useCallback(async (hh: Household, memberId: string, permission: MemberPermission) => {
         const [
             membersRows, invitesRows, categoriesRows, accountsRows, incomeSourcesRows,
             transactionsRows, recurringBillsRows, budgetsRows, goalsRows, investmentsRows,
-            debtsRows, otherAssetsRows, netWorthRows,
+            debtsRows, otherAssetsRows, netWorthRows, milestonesRows,
         ] = await Promise.all([
             fetchAll<HouseholdMember>('household_members', hh.id),
             fetchAll<HouseholdInvite>('household_invites', hh.id).catch(() => [] as HouseholdInvite[]),
@@ -152,6 +155,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             fetchAll<Debt>('debts', hh.id),
             fetchAll<OtherAsset>('other_assets', hh.id),
             fetchAll<NetWorthSnapshot>('net_worth_snapshots', hh.id, { column: 'date', ascending: true }),
+            fetchAll<{ key: string }>('milestones_seen', hh.id).catch(() => [] as { key: string }[]),
         ]);
 
         const goalIds = goalsRows.map((g) => g.id);
@@ -171,7 +175,23 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             ...g, contributions: contributionsByGoal.get(g.id) || [],
         }));
 
+        // Daily check-in streak: bump it the first time this member loads the
+        // app on a given calendar day. Best-effort -- a failed write here
+        // shouldn't block anything else from loading.
+        const today = todayISO();
+        const selfIdx = membersRows.findIndex((m) => m.id === memberId);
+        if (selfIdx !== -1 && membersRows[selfIdx].lastActiveDate !== today) {
+            const self = membersRows[selfIdx];
+            const yesterday = addDaysISO(today, -1);
+            const newStreak = self.lastActiveDate === yesterday ? (self.currentStreak || 0) + 1 : 1;
+            const newLongest = Math.max(self.longestStreak || 0, newStreak);
+            updateRow('household_members', memberId, { currentStreak: newStreak, longestStreak: newLongest, lastActiveDate: today })
+                .catch((e) => console.warn('streak check-in failed', e.message));
+            membersRows[selfIdx] = { ...self, currentStreak: newStreak, longestStreak: newLongest, lastActiveDate: today };
+        }
+
         setMembers(membersRows);
+        setSeenMilestoneKeys(milestonesRows.map((m) => m.key));
         setPendingInvites(invitesRows.filter((i) => i.status === 'pending'));
         setCategories(categoriesRows);
         setAccounts(accountsRows);
@@ -194,7 +214,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             setHousehold(null); setMyMemberId(null); setMyPermission(null);
             setMembers([]); setPendingInvites([]); setCategories([]); setAccounts([]); setIncomeSources([]);
             setTransactions([]); setRecurringBills([]); setBudgets([]); setGoals([]); setInvestments([]);
-            setDebts([]); setOtherAssets([]); setNetWorthHistory([]);
+            setDebts([]); setOtherAssets([]); setNetWorthHistory([]); setSeenMilestoneKeys([]);
             setIsLoading(false);
             return;
         }
@@ -362,6 +382,19 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }).catch((e) => console.warn('contribution failed', e.message));
     }, [goals]);
 
+    // ─── Milestone celebrations (recorded once so they never re-fire) ──────
+    const recordMilestones = useCallback(async (keys: string[]): Promise<void> => {
+        if (!household || keys.length === 0) return;
+        try {
+            const { error } = await supabase.from('milestones_seen')
+                .upsert(keys.map((key) => toSnakeCase({ householdId: household.id, key })), { onConflict: 'household_id,key', ignoreDuplicates: true });
+            if (error) throw error;
+            setSeenMilestoneKeys((prev) => Array.from(new Set([...prev, ...keys])));
+        } catch (e: any) {
+            console.warn('recordMilestones failed', e.message);
+        }
+    }, [household]);
+
     // ─── Net worth snapshots (one row per calendar month) ──────────────────
     const recordNetWorthSnapshot = useCallback((totalAssets: number, totalLiabilities: number) => {
         if (!household) return;
@@ -384,7 +417,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const value = useMemo<FinanceContextValue>(() => ({
         isLoading, isOnboarded: !!household, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
-        investments, debts, otherAssets, netWorthHistory,
+        investments, debts, otherAssets, netWorthHistory, seenMilestoneKeys, recordMilestones,
         createHousehold, joinHousehold, inviteMember, removeMember,
         addCategory: categoryCrud.add, updateCategory: categoryCrud.update, removeCategory: categoryCrud.remove,
         addAccount: accountCrud.add, updateAccount: accountCrud.update, removeAccount: accountCrud.remove,
@@ -401,7 +434,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     }), [
         isLoading, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
-        investments, debts, otherAssets, netWorthHistory,
+        investments, debts, otherAssets, netWorthHistory, seenMilestoneKeys, recordMilestones,
         createHousehold, joinHousehold, inviteMember, removeMember,
         categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
         bulkAddTransactions, uploadReceiptForTransaction,

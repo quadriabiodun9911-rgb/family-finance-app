@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,15 +6,20 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Card, StatCard, Button } from '../components/ui';
 import QuickAddTextBar from '../components/QuickAddTextBar';
+import DailyInsightCard from '../components/DailyInsightCard';
+import MilestoneCelebrationModal from '../components/MilestoneCelebrationModal';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { computeCashFlowSummary } from '../intelligence/cashFlow';
-import { computeBudgetLines } from '../intelligence/budgetPlan';
+import { computeBudgetLines, generateBudgetInsights } from '../intelligence/budgetPlan';
+import { computeAllCategoryTrends, generateSpendingInsights } from '../intelligence/spending';
 import { computeAllGoalPaces } from '../intelligence/goalPace';
 import { computeFinancialHealthReport, healthStatusLabel } from '../intelligence/health';
 import { generateIncomeInsights } from '../intelligence/income';
+import { pickDailyInsight } from '../intelligence/dailyInsight';
+import { detectMilestones, MilestoneCandidate } from '../intelligence/milestones';
 import { formatMoney } from '../utils/currency';
-import { currentPeriod, periodLabel } from '../utils/date';
+import { currentPeriod, periodLabel, todayISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -31,9 +36,13 @@ const QUICK_LINKS: { key: keyof RootStackParamList; label: string; icon: any; de
 
 export default function DashboardScreen() {
     const navigation = useNavigation<Nav>();
-    const { household, transactions, accounts, recurringBills, budgets, categories, goals, incomeSources, debts } = useFinance();
+    const {
+        household, transactions, accounts, recurringBills, budgets, categories, goals, incomeSources, debts,
+        members, myMemberId, netWorthHistory, seenMilestoneKeys, recordMilestones,
+    } = useFinance();
     const symbol = household?.currencySymbol || '$';
     const period = currentPeriod();
+    const me = members.find((m) => m.id === myMemberId);
 
     const cashFlow = useMemo(() => computeCashFlowSummary(transactions, accounts, recurringBills, period), [transactions, accounts, recurringBills, period]);
     const budgetLines = useMemo(() => computeBudgetLines(budgets, categories, transactions, period), [budgets, categories, transactions, period]);
@@ -42,6 +51,36 @@ export default function DashboardScreen() {
     const health = useMemo(() => computeFinancialHealthReport(cashFlow, budgetLines, goalPaces, debts, incomeInsights), [cashFlow, budgetLines, goalPaces, debts, incomeInsights]);
 
     const atRiskGoals = goalPaces.filter((g) => g.onTrack === false).length;
+
+    const budgetInsights = useMemo(() => generateBudgetInsights(budgetLines, symbol), [budgetLines, symbol]);
+    const spendingInsights = useMemo(() => generateSpendingInsights(computeAllCategoryTrends(transactions, categories), symbol), [transactions, categories, symbol]);
+    const today = todayISO();
+    const dailyInsight = useMemo(
+        () => pickDailyInsight([...budgetInsights, ...spendingInsights, ...incomeInsights], today),
+        [budgetInsights, spendingInsights, incomeInsights, today],
+    );
+
+    const milestoneCandidates = useMemo(
+        () => detectMilestones(goals, debts, netWorthHistory, me?.currentStreak || 0, accounts, transactions),
+        [goals, debts, netWorthHistory, me?.currentStreak, accounts, transactions],
+    );
+    const [celebration, setCelebration] = useState<MilestoneCandidate | null>(null);
+    const [celebrationQueue, setCelebrationQueue] = useState<MilestoneCandidate[]>([]);
+
+    useEffect(() => {
+        const fresh = milestoneCandidates.filter((m) => !seenMilestoneKeys.includes(m.key));
+        if (fresh.length === 0) return;
+        recordMilestones(fresh.map((m) => m.key));
+        setCelebrationQueue((prev) => [...prev, ...fresh]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [milestoneCandidates.map((m) => m.key).join(','), seenMilestoneKeys.join(',')]);
+
+    useEffect(() => {
+        if (!celebration && celebrationQueue.length > 0) {
+            setCelebration(celebrationQueue[0]);
+            setCelebrationQueue((prev) => prev.slice(1));
+        }
+    }, [celebration, celebrationQueue]);
 
     return (
         <SafeAreaView style={styles.safe} edges={['top']}>
@@ -57,6 +96,8 @@ export default function DashboardScreen() {
                         <Text style={styles.healthLabel}>Health</Text>
                     </Pressable>
                 </View>
+
+                <DailyInsightCard insight={dailyInsight} streak={me?.currentStreak || 0} />
 
                 <Card style={styles.cashFlowCard}>
                     <Text style={styles.cardEyebrow}>Cash Flow Intelligence</Text>
@@ -111,6 +152,7 @@ export default function DashboardScreen() {
                     <Button label="Add income" onPress={() => navigation.navigate('AddTransaction', { type: 'income' })} style={{ flex: 1 }} />
                 </View>
             </ScrollView>
+            <MilestoneCelebrationModal milestone={celebration} onClose={() => setCelebration(null)} />
         </SafeAreaView>
     );
 }

@@ -2,14 +2,19 @@ import React, { useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenHeader from '../components/ScreenHeader';
 import QuickAddRow from '../components/QuickAddRow';
-import { Card } from '../components/ui';
+import { Card, Button } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { computeNetWorth, netWorthTrend } from '../intelligence/netWorth';
 import { formatMoney } from '../utils/currency';
 import { InvestmentType } from '../types';
+import { RootStackParamList } from '../navigation/types';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 function Row({ icon, name, value, symbol, onDelete }: { icon: any; name: string; value: number; symbol: string; onDelete: () => void }) {
     return (
@@ -22,10 +27,11 @@ function Row({ icon, name, value, symbol, onDelete }: { icon: any; name: string;
 }
 
 export default function SavingsInvestmentsScreen() {
+    const navigation = useNavigation<Nav>();
     const {
         household, accounts, addAccount, removeAccount,
         goals, investments, addInvestment, removeInvestment,
-        debts, addDebt, removeDebt, otherAssets, addOtherAsset, removeOtherAsset,
+        debts, removeDebt, otherAssets, addOtherAsset, removeOtherAsset,
         netWorthHistory, recordNetWorthSnapshot,
     } = useFinance();
     const symbol = household?.currencySymbol || '$';
@@ -94,7 +100,8 @@ export default function SavingsInvestmentsScreen() {
                 <Card style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Debts & liabilities</Text>
                     {debts.map((d) => <Row key={d.id} icon="card" name={d.name} value={d.balance} symbol={symbol} onDelete={() => confirmDelete(d.name, () => removeDebt(d.id))} />)}
-                    <QuickAddRow namePlaceholder="e.g. Mortgage" amountPlaceholder="Balance" onAdd={(name, amount) => addDebt({ name, balance: amount })} />
+                    {debts.length === 0 && <Text style={styles.emptyText}>No debts tracked yet.</Text>}
+                    <Button label="Debt & Mortgage Intelligence" variant="secondary" onPress={() => navigation.navigate('DebtIntelligence')} />
                 </Card>
 
                 <Card style={styles.sectionCard}>

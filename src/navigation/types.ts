@@ -13,6 +13,7 @@ export type RootStackParamList = {
     Household: undefined;
     ImportStatement: undefined;
     RiskDecision: undefined;
+    DebtIntelligence: undefined;
 };
 
 export type TabParamList = {

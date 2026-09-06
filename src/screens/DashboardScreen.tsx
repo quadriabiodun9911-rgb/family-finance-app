@@ -26,6 +26,7 @@ const QUICK_LINKS: { key: keyof RootStackParamList; label: string; icon: any; de
     { key: 'SavingsInvestments', label: 'Net Worth', icon: 'diamond', desc: 'Savings, investments & net worth' },
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses', desc: 'Financial health & affordability' },
     { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half', desc: 'What could go wrong, and what to do' },
+    { key: 'DebtIntelligence', label: 'Debt & Mortgage', icon: 'card', desc: 'Payoff timelines, interest & strategy' },
 ];
 
 export default function DashboardScreen() {

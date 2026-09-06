@@ -167,10 +167,14 @@ export interface Investment {
 }
 
 // ─── Debts & other assets (net worth inputs beyond accounts/investments) ───
+export type DebtType = 'mortgage' | 'auto' | 'credit_card' | 'student' | 'personal' | 'other';
+
 export interface Debt {
     id: string;
     name: string;
+    type: DebtType;
     balance: number;
+    originalPrincipal?: number; // lets progress ("X% paid off") be shown; unset for debts entered mid-life
     aprPct?: number;
     minPayment?: number;
     linkedGoalId?: string; // a debt can also be tracked as a payoff FinancialGoal

@@ -1,0 +1,21 @@
+export type RootStackParamList = {
+    Onboarding: undefined;
+    Tabs: undefined;
+    AddTransaction: { type?: 'income' | 'expense' } | undefined;
+    AddGoal: undefined;
+    GoalDetail: { goalId: string };
+    SavingsInvestments: undefined;
+    Analysis: undefined;
+    Reports: undefined;
+    IncomeInsights: undefined;
+    Coach: undefined;
+    Household: undefined;
+};
+
+export type TabParamList = {
+    Home: undefined;
+    Transactions: undefined;
+    Budget: undefined;
+    Goals: undefined;
+    More: undefined;
+};

@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Family Finance",
+    "slug": "family-finance-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b1220",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.familyfinance.app"
+    },
+    "android": {
+      "package": "com.familyfinance.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b1220"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

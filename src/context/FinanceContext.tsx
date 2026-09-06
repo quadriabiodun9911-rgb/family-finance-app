@@ -225,14 +225,18 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const createHousehold = useCallback(async (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string): Promise<{ error: string | null }> => {
         if (!user) return { error: 'Not signed in.' };
         try {
-            const hhRow = await insertRow<Household>('households', { name: householdName, currencyCode, currencySymbol, ownerId: user.id });
-            const memberRow = await insertRow<HouseholdMember>('household_members', {
-                householdId: hhRow.id, userId: user.id, name: ownerName, role: 'owner', permission: 'full', color: Colors.memberPalette[0],
+            const { data, error } = await supabase.rpc('create_household', {
+                household_name: householdName, currency_code: currencyCode, currency_symbol: currencySymbol, owner_name: ownerName,
             });
+            if (error) throw error;
+            const memberRow = toCamelCase<HouseholdMember>(data);
+            const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', (data as any).household_id).single();
+            if (hhErr || !hhRow) throw hhErr || new Error('Household created but could not be loaded.');
+            const hh = toCamelCase<Household>(hhRow);
             const cats = defaultCategories();
-            const { error: catErr } = await supabase.from('categories').insert(cats.map((c) => toSnakeCase({ ...c, householdId: hhRow.id })));
+            const { error: catErr } = await supabase.from('categories').insert(cats.map((c) => toSnakeCase({ ...c, householdId: hh.id })));
             if (catErr) throw catErr;
-            await loadEverything(hhRow, memberRow.id, 'full');
+            await loadEverything(hh, memberRow.id, 'full');
             return { error: null };
         } catch (e: any) {
             return { error: e?.message || 'Could not create household.' };
@@ -241,21 +245,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
     const joinHousehold = useCallback(async (inviteCode: string, memberName: string): Promise<{ error: string | null }> => {
         if (!user) return { error: 'Not signed in.' };
-        const code = inviteCode.trim().toUpperCase();
-        const { data: inviteRow, error: findErr } = await supabase
-            .from('household_invites').select('*').eq('invite_code', code).eq('status', 'pending').maybeSingle();
-        if (findErr || !inviteRow) return { error: 'Invite code not found or already used.' };
-        const invite = toCamelCase<HouseholdInvite>(inviteRow);
-        const paletteIndex = (await supabase.from('household_members').select('id', { count: 'exact', head: true }).eq('household_id', invite.householdId)).count ?? 0;
         try {
-            const memberRow = await insertRow<HouseholdMember>('household_members', {
-                householdId: invite.householdId, userId: user.id, name: memberName,
-                role: invite.role, permission: invite.permission, color: Colors.memberPalette[paletteIndex % Colors.memberPalette.length],
-            });
-            await updateRow('household_invites', invite.id, { status: 'accepted' });
-            const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', invite.householdId).single();
+            const { data, error } = await supabase.rpc('join_household', { p_invite_code: inviteCode.trim(), member_name: memberName });
+            if (error) throw error;
+            const memberRow = toCamelCase<HouseholdMember>(data);
+            const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', (data as any).household_id).single();
             if (hhErr || !hhRow) return { error: 'Joined, but could not load the household. Try restarting the app.' };
-            await loadEverything(toCamelCase<Household>(hhRow), memberRow.id, invite.permission);
+            await loadEverything(toCamelCase<Household>(hhRow), memberRow.id, memberRow.permission);
             return { error: null };
         } catch (e: any) {
             return { error: e.message || 'Could not join that household.' };

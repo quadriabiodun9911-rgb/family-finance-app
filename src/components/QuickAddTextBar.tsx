@@ -5,7 +5,7 @@ import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { parseQuickAddText } from '../utils/quickAddParser';
 import { formatMoney } from '../utils/currency';
-import { todayISO } from '../utils/date';
+import { todayISO, nowTimeHHMM } from '../utils/date';
 
 export default function QuickAddTextBar() {
     const { household, categories, addTransaction } = useFinance();
@@ -31,6 +31,7 @@ export default function QuickAddTextBar() {
             ownership: 'shared',
             description: result.description,
             isRecurring: false,
+            time: nowTimeHHMM(),
         });
         const sign = result.type === 'income' ? '+' : '-';
         setFeedback({ ok: true, message: `Added ${sign}${formatMoney(result.amount, symbol)} · ${result.categoryLabel}` });

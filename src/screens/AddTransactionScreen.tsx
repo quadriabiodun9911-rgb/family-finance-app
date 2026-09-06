@@ -10,7 +10,7 @@ import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { RootStackParamList } from '../navigation/types';
 import { CategoryType, Ownership, RecurringFrequency } from '../types';
-import { todayISO } from '../utils/date';
+import { todayISO, nowTimeHHMM } from '../utils/date';
 import { uploadReceiptImage } from '../utils/receiptStorage';
 
 export default function AddTransactionScreen() {
@@ -29,10 +29,12 @@ export default function AddTransactionScreen() {
     const [isRecurring, setIsRecurring] = useState(false);
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [time, setTime] = useState(nowTimeHHMM());
 
     const relevantCategories = categories.filter((c) => c.type === type);
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
-    const canSave = !Number.isNaN(numericAmount) && numericAmount > 0 && !!categoryId;
+    const timeValid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(time.trim());
+    const canSave = !Number.isNaN(numericAmount) && numericAmount > 0 && !!categoryId && timeValid;
 
     const handlePickReceipt = async () => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -68,6 +70,7 @@ export default function AddTransactionScreen() {
             isRecurring,
             recurringFrequency: isRecurring ? 'monthly' as RecurringFrequency : undefined,
             receiptUrl,
+            time: time.trim(),
         });
         navigation.goBack();
     };
@@ -87,6 +90,22 @@ export default function AddTransactionScreen() {
 
                 <FormField label={`Amount (${symbol})`} placeholder="0.00" keyboardType="decimal-pad" value={amount} onChangeText={setAmount} />
                 <FormField label="Description" placeholder="e.g. Weekly groceries" value={description} onChangeText={setDescription} />
+
+                <View style={styles.timeRow}>
+                    <View style={styles.timeFieldWrap}>
+                        <FormField
+                            label="Time"
+                            placeholder="HH:MM"
+                            value={time}
+                            onChangeText={setTime}
+                            style={!timeValid && time.length > 0 ? styles.timeInputError : undefined}
+                        />
+                    </View>
+                    <Pressable style={styles.nowBtn} onPress={() => setTime(nowTimeHHMM())}>
+                        <Text style={styles.nowBtnText}>Now</Text>
+                    </Pressable>
+                </View>
+                {!timeValid && time.length > 0 && <Text style={styles.errorText}>Use 24-hour HH:MM, e.g. 14:30.</Text>}
 
                 <View style={styles.section}>
                     <Text style={styles.sectionLabel}>Category</Text>
@@ -187,4 +206,10 @@ const styles = StyleSheet.create({
     receiptPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
     receiptThumb: { width: 64, height: 64, borderRadius: Radius.md, backgroundColor: Colors.surfaceAlt },
     receiptRemoveBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+    timeRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end' },
+    timeFieldWrap: { flex: 1 },
+    timeInputError: { borderColor: Colors.warning },
+    nowBtn: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 2, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surfaceAlt },
+    nowBtnText: { color: Colors.textMuted, fontSize: 13, fontWeight: '700' },
+    errorText: { color: Colors.warning, fontSize: 12, marginTop: -Spacing.sm },
 });

@@ -102,6 +102,7 @@ export interface Transaction {
     isRecurring: boolean;
     recurringFrequency?: RecurringFrequency;
     receiptUrl?: string; // storage path in the 'receipts' bucket, resolved to a signed URL for display
+    time?: string; // local time the transaction happened, "HH:MM" 24-hour -- separate from `date` so every existing date-string comparison (period grouping, "today" checks) stays untouched
     createdAt: string;
 }
 

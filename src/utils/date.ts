@@ -6,6 +6,26 @@ export function todayISO(): string {
     return toISODate(new Date());
 }
 
+export function nowTimeHHMM(): string {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// "14:05" -> "2:05 PM". Returns null for anything that isn't a plain HH:MM
+// string, so callers can fall back to omitting the time rather than
+// displaying garbage for imported/legacy transactions that never got one.
+export function formatTimeLabel(time?: string): string | null {
+    if (!time) return null;
+    const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+    if (!match) return null;
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+    if (hours > 23 || hours < 0) return null;
+    const period = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${hours}:${minutes} ${period}`;
+}
+
 export function currentPeriod(): string {
     return todayISO().slice(0, 7); // YYYY-MM
 }

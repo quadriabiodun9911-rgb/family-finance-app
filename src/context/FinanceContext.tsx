@@ -32,7 +32,7 @@ interface FinanceContextValue {
     otherAssets: OtherAsset[];
     netWorthHistory: NetWorthSnapshot[];
 
-    createHousehold: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<void>;
+    createHousehold: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<{ error: string | null }>;
     joinHousehold: (inviteCode: string, memberName: string) => Promise<{ error: string | null }>;
     inviteMember: (email: string, role: MemberRole, permission: MemberPermission) => Promise<{ code: string | null; error: string | null }>;
     removeMember: (id: string) => void;
@@ -211,22 +211,32 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             return;
         }
         const hh = toCamelCase<Household>(hhRow);
-        await loadEverything(hh, member.id, member.permission);
+        try {
+            await loadEverything(hh, member.id, member.permission);
+        } catch (e: any) {
+            console.warn('loadEverything failed during bootstrap', e?.message);
+        }
         setIsLoading(false);
     }, [user, loadEverything]);
 
     useEffect(() => { bootstrap(); }, [bootstrap]);
 
     // ─── Household lifecycle ────────────────────────────────────────────────
-    const createHousehold = useCallback(async (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => {
-        if (!user) return;
-        const hhRow = await insertRow<Household>('households', { name: householdName, currencyCode, currencySymbol, ownerId: user.id });
-        const memberRow = await insertRow<HouseholdMember>('household_members', {
-            householdId: hhRow.id, userId: user.id, name: ownerName, role: 'owner', permission: 'full', color: Colors.memberPalette[0],
-        });
-        const cats = defaultCategories();
-        await supabase.from('categories').insert(cats.map((c) => toSnakeCase({ ...c, householdId: hhRow.id })));
-        await loadEverything(hhRow, memberRow.id, 'full');
+    const createHousehold = useCallback(async (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string): Promise<{ error: string | null }> => {
+        if (!user) return { error: 'Not signed in.' };
+        try {
+            const hhRow = await insertRow<Household>('households', { name: householdName, currencyCode, currencySymbol, ownerId: user.id });
+            const memberRow = await insertRow<HouseholdMember>('household_members', {
+                householdId: hhRow.id, userId: user.id, name: ownerName, role: 'owner', permission: 'full', color: Colors.memberPalette[0],
+            });
+            const cats = defaultCategories();
+            const { error: catErr } = await supabase.from('categories').insert(cats.map((c) => toSnakeCase({ ...c, householdId: hhRow.id })));
+            if (catErr) throw catErr;
+            await loadEverything(hhRow, memberRow.id, 'full');
+            return { error: null };
+        } catch (e: any) {
+            return { error: e?.message || 'Could not create household.' };
+        }
     }, [user, loadEverything]);
 
     const joinHousehold = useCallback(async (inviteCode: string, memberName: string): Promise<{ error: string | null }> => {

@@ -28,15 +28,18 @@ export default function HouseholdSetupScreen() {
     const [inviteCode, setInviteCode] = useState('');
     const [joinName, setJoinName] = useState('');
     const [joinError, setJoinError] = useState<string | null>(null);
+    const [createError, setCreateError] = useState<string | null>(null);
 
     const canCreate = householdName.trim().length > 0 && ownerName.trim().length > 0;
     const canJoin = inviteCode.trim().length >= 4 && joinName.trim().length > 0;
 
     const handleCreate = async () => {
         if (!canCreate) return;
+        setCreateError(null);
         setSaving(true);
-        await createHousehold(householdName.trim(), ownerName.trim(), currency.code, currency.symbol);
+        const result = await createHousehold(householdName.trim(), ownerName.trim(), currency.code, currency.symbol);
         setSaving(false);
+        if (result.error) setCreateError(result.error);
     };
 
     const handleJoin = async () => {
@@ -77,6 +80,7 @@ export default function HouseholdSetupScreen() {
                                 ))}
                             </View>
                         </View>
+                        {createError ? <Text style={styles.errorText}>{createError}</Text> : null}
                         <Button label="Create household" onPress={handleCreate} disabled={!canCreate} loading={saving} />
                     </View>
                 ) : (

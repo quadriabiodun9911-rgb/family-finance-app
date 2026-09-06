@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Card, StatCard, Button } from '../components/ui';
+import QuickAddTextBar from '../components/QuickAddTextBar';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { computeCashFlowSummary } from '../intelligence/cashFlow';
@@ -43,6 +44,7 @@ export default function DashboardScreen() {
     return (
         <SafeAreaView style={styles.safe} edges={['top']}>
             <ScrollView contentContainerStyle={styles.container}>
+                <QuickAddTextBar />
                 <View style={styles.headerRow}>
                     <View>
                         <Text style={styles.greeting}>{household?.name || 'Your household'}</Text>

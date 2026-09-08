@@ -35,6 +35,34 @@ const DECISION_OPTIONS: { type: DecisionType; label: string; icon: any }[] = [
     { type: 'one_time_purchase', label: 'One-time purchase', icon: 'cart' },
 ];
 
+// "Can we afford this?" life decisions -- each maps onto one of the four
+// underlying decision types with a sensible default and a helper explaining
+// what number to enter, so the abstract simulator reads as the concrete
+// question a household actually asked (buy a car? have a child?), not a
+// generic accounting form.
+interface LifeDecisionPreset {
+    key: string;
+    label: string;
+    icon: any;
+    type: DecisionType;
+    helper: string;
+}
+
+const LIFE_DECISION_PRESETS: LifeDecisionPreset[] = [
+    { key: 'car', label: 'Buy a car', icon: 'car', type: 'new_debt', helper: 'Enter the estimated monthly loan payment. Paying cash instead? Switch to "One-time purchase" below.' },
+    { key: 'home_purchase', label: 'Buy a home', icon: 'business', type: 'new_debt', helper: 'Enter the estimated monthly mortgage payment.' },
+    { key: 'move', label: 'Move house', icon: 'home', type: 'new_expense', helper: 'Enter the change in monthly housing cost (new rent minus old).' },
+    { key: 'child', label: 'Have a child', icon: 'happy', type: 'new_expense', helper: 'Estimate the added monthly cost — childcare, healthcare, everyday needs.' },
+    { key: 'school_fees', label: 'Pay school fees', icon: 'school', type: 'new_expense', helper: 'Enter fees as a monthly cost, or switch to "One-time purchase" if paid in one lump sum.' },
+    { key: 'holiday', label: 'Take a holiday', icon: 'airplane', type: 'one_time_purchase', helper: 'Enter the total trip cost.' },
+    { key: 'loan', label: 'Take a loan', icon: 'cash', type: 'new_debt', helper: 'Enter the monthly repayment amount.' },
+    { key: 'send_money', label: 'Send money to family', icon: 'people', type: 'new_expense', helper: 'Enter the recurring monthly amount you plan to send.' },
+    { key: 'business', label: 'Start a business', icon: 'briefcase', type: 'income_change', helper: 'Estimate how monthly household income changes while it gets going (often negative at first).' },
+    { key: 'job_change', label: 'Change jobs', icon: 'swap-horizontal', type: 'income_change', helper: 'Enter the change in monthly household income (new pay minus old).' },
+    { key: 'retire_early', label: 'Retire early', icon: 'sunny', type: 'income_change', helper: 'Enter the monthly income change (usually negative) from stopping work.' },
+    { key: 'study', label: 'Study for a degree', icon: 'book', type: 'new_expense', helper: 'Enter monthly tuition/costs, or switch to "One-time purchase" if paid upfront.' },
+];
+
 const VERDICT_META = {
     safe: { color: Colors.good, bg: Colors.goodMuted, label: 'Looks safe' },
     caution: { color: Colors.watch, bg: Colors.watchMuted, label: 'Proceed with caution' },
@@ -87,6 +115,17 @@ export default function RiskDecisionScreen() {
     const [oneTimeAmount, setOneTimeAmount] = useState('');
     const [termMonths, setTermMonths] = useState('');
     const [impact, setImpact] = useState<DecisionImpact | null>(null);
+    const [presetKey, setPresetKey] = useState<string | null>(null);
+
+    const applyPreset = (preset: LifeDecisionPreset) => {
+        setPresetKey(preset.key);
+        setDecisionType(preset.type);
+        setLabel(preset.label);
+        setMonthlyAmount('');
+        setOneTimeAmount('');
+        setTermMonths('');
+        setImpact(null);
+    };
 
     const canSimulate = decisionType === 'one_time_purchase'
         ? parseFloat(oneTimeAmount) > 0
@@ -133,15 +172,32 @@ export default function RiskDecisionScreen() {
                 ) : (
                     <>
                         <Card style={styles.sectionCard}>
+                            <Text style={styles.sectionTitle}>Can we afford...</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetRow}>
+                                {LIFE_DECISION_PRESETS.map((preset) => (
+                                    <Pressable key={preset.key} onPress={() => applyPreset(preset)} style={[styles.presetChip, presetKey === preset.key && styles.chipActive]}>
+                                        <Ionicons name={preset.icon} size={16} color={presetKey === preset.key ? Colors.primary : Colors.textMuted} />
+                                        <Text style={[styles.presetChipText, presetKey === preset.key && styles.chipTextActive]}>{preset.label}</Text>
+                                    </Pressable>
+                                ))}
+                            </ScrollView>
+
                             <Text style={styles.sectionTitle}>What are you considering?</Text>
                             <View style={styles.chipWrap}>
                                 {DECISION_OPTIONS.map((opt) => (
-                                    <Pressable key={opt.type} onPress={() => { setDecisionType(opt.type); setImpact(null); }} style={[styles.chip, decisionType === opt.type && styles.chipActive]}>
+                                    <Pressable key={opt.type} onPress={() => { setDecisionType(opt.type); setPresetKey(null); setImpact(null); }} style={[styles.chip, decisionType === opt.type && styles.chipActive]}>
                                         <Ionicons name={opt.icon} size={14} color={decisionType === opt.type ? Colors.primary : Colors.textMuted} />
                                         <Text style={[styles.chipText, decisionType === opt.type && styles.chipTextActive]}>{opt.label}</Text>
                                     </Pressable>
                                 ))}
                             </View>
+
+                            {presetKey && (
+                                <View style={styles.helperRow}>
+                                    <Ionicons name="information-circle-outline" size={14} color={Colors.textMuted} />
+                                    <Text style={styles.helperText}>{LIFE_DECISION_PRESETS.find((p) => p.key === presetKey)?.helper}</Text>
+                                </View>
+                            )}
 
                             <FormField label="What is it?" placeholder='e.g. "New car", "Second job", "School fees loan"' value={label} onChangeText={setLabel} />
 
@@ -223,6 +279,11 @@ const styles = StyleSheet.create({
     chipActive: { backgroundColor: Colors.primaryMuted, borderColor: Colors.primary },
     chipText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
     chipTextActive: { color: Colors.primary },
+    presetRow: { gap: Spacing.sm, paddingRight: Spacing.md },
+    presetChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surfaceAlt },
+    presetChipText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+    helperRow: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
+    helperText: { color: Colors.textMuted, fontSize: 12, lineHeight: 17, flex: 1 },
     verdictCard: { gap: Spacing.md, borderWidth: 1 },
     verdictLabel: { fontSize: 16, fontWeight: '800' },
     impactNarrative: { color: Colors.text, fontSize: 13, lineHeight: 19 },

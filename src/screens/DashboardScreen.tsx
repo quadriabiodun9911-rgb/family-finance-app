@@ -82,6 +82,8 @@ export default function DashboardScreen() {
         }
     }, [celebration, celebrationQueue]);
 
+    const [showBreakdown, setShowBreakdown] = useState(false);
+
     return (
         <SafeAreaView style={styles.safe} edges={['top']}>
             <ScrollView contentContainerStyle={styles.container}>
@@ -99,14 +101,11 @@ export default function DashboardScreen() {
 
                 <DailyInsightCard insight={dailyInsight} streak={me?.currentStreak || 0} />
 
-                <Card style={styles.cashFlowCard}>
-                    <Text style={styles.cardEyebrow}>Cash Flow Intelligence</Text>
+                <Card style={styles.snapshotCard}>
+                    <Text style={styles.cardEyebrow}>Financial Snapshot</Text>
                     <Text style={styles.surplusValue}>
                         {cashFlow.surplus >= 0 ? '+' : ''}{formatMoney(cashFlow.surplus, symbol)}
-                    </Text>
-                    <Text style={styles.surplusCaption}>
-                        {`Your household generated ${formatMoney(cashFlow.income, symbol)} this month and spent ${formatMoney(cashFlow.expense, symbol)}${cashFlow.surplus >= 0 ? `, leaving a ${formatMoney(cashFlow.surplus, symbol)} surplus.` : '.'}`}
-                        {cashFlow.committedNextMonth > 0 ? ` ${formatMoney(cashFlow.committedNextMonth, symbol)} of upcoming bills are already committed.` : ''}
+                        <Text style={styles.surplusUnit}>  this month</Text>
                     </Text>
                     <View style={styles.statRow}>
                         <StatCard label="Income" value={formatMoney(cashFlow.income, symbol)} valueColor={Colors.income} flex={1} />
@@ -114,31 +113,6 @@ export default function DashboardScreen() {
                         <StatCard label="Cash on hand" value={formatMoney(cashFlow.accountsBalance, symbol)} flex={1} />
                     </View>
                 </Card>
-
-                {cashFlow.upcomingBills.length > 0 && (
-                    <Card style={styles.billsCard}>
-                        <Text style={styles.sectionTitle}>Upcoming bills</Text>
-                        {cashFlow.upcomingBills.slice(0, 3).map((u) => (
-                            <View key={u.bill.id} style={styles.billRow}>
-                                <Ionicons name="calendar" size={16} color={Colors.textMuted} />
-                                <Text style={styles.billName}>{u.bill.name}</Text>
-                                <Text style={styles.billMeta}>{formatMoney(u.bill.amount, symbol)} · {u.daysAway === 0 ? 'today' : `in ${u.daysAway}d`}</Text>
-                            </View>
-                        ))}
-                    </Card>
-                )}
-
-                <View style={styles.linksGrid}>
-                    {QUICK_LINKS.map((link) => (
-                        <Pressable key={link.key} style={styles.linkCard} onPress={() => navigation.navigate(link.key as any)}>
-                            <View style={styles.linkIconWrap}>
-                                <Ionicons name={link.icon} size={18} color={Colors.primary} />
-                            </View>
-                            <Text style={styles.linkLabel}>{link.label}</Text>
-                            <Text style={styles.linkDesc}>{link.desc}</Text>
-                        </Pressable>
-                    ))}
-                </View>
 
                 {atRiskGoals > 0 && (
                     <Card style={styles.warnCard}>
@@ -151,6 +125,45 @@ export default function DashboardScreen() {
                     <Button label="Add expense" variant="secondary" onPress={() => navigation.navigate('AddTransaction', { type: 'expense' })} style={{ flex: 1 }} />
                     <Button label="Add income" onPress={() => navigation.navigate('AddTransaction', { type: 'income' })} style={{ flex: 1 }} />
                 </View>
+
+                <Pressable style={styles.breakdownToggle} onPress={() => setShowBreakdown((v) => !v)}>
+                    <Text style={styles.breakdownToggleText}>{showBreakdown ? 'Hide full breakdown' : 'See full breakdown'}</Text>
+                    <Ionicons name={showBreakdown ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.primary} />
+                </Pressable>
+
+                {showBreakdown && (
+                    <>
+                        <Text style={styles.breakdownCaption}>
+                            {`Your household generated ${formatMoney(cashFlow.income, symbol)} this month and spent ${formatMoney(cashFlow.expense, symbol)}${cashFlow.surplus >= 0 ? `, leaving a ${formatMoney(cashFlow.surplus, symbol)} surplus.` : '.'}`}
+                            {cashFlow.committedNextMonth > 0 ? ` ${formatMoney(cashFlow.committedNextMonth, symbol)} of upcoming bills are already committed.` : ''}
+                        </Text>
+
+                        {cashFlow.upcomingBills.length > 0 && (
+                            <Card style={styles.billsCard}>
+                                <Text style={styles.sectionTitle}>Upcoming bills</Text>
+                                {cashFlow.upcomingBills.slice(0, 3).map((u) => (
+                                    <View key={u.bill.id} style={styles.billRow}>
+                                        <Ionicons name="calendar" size={16} color={Colors.textMuted} />
+                                        <Text style={styles.billName}>{u.bill.name}</Text>
+                                        <Text style={styles.billMeta}>{formatMoney(u.bill.amount, symbol)} · {u.daysAway === 0 ? 'today' : `in ${u.daysAway}d`}</Text>
+                                    </View>
+                                ))}
+                            </Card>
+                        )}
+
+                        <View style={styles.linksGrid}>
+                            {QUICK_LINKS.map((link) => (
+                                <Pressable key={link.key} style={styles.linkCard} onPress={() => navigation.navigate(link.key as any)}>
+                                    <View style={styles.linkIconWrap}>
+                                        <Ionicons name={link.icon} size={18} color={Colors.primary} />
+                                    </View>
+                                    <Text style={styles.linkLabel}>{link.label}</Text>
+                                    <Text style={styles.linkDesc}>{link.desc}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </>
+                )}
             </ScrollView>
             <MilestoneCelebrationModal milestone={celebration} onClose={() => setCelebration(null)} />
         </SafeAreaView>
@@ -166,11 +179,14 @@ const styles = StyleSheet.create({
     healthPill: { alignItems: 'center', backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
     healthScore: { color: Colors.primary, fontSize: 18, fontWeight: '800' },
     healthLabel: { color: Colors.textFaint, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' },
-    cashFlowCard: { gap: Spacing.sm },
+    snapshotCard: { gap: Spacing.sm },
     cardEyebrow: { color: Colors.primary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
     surplusValue: { color: Colors.text, fontSize: 30, fontWeight: '800' },
-    surplusCaption: { color: Colors.textMuted, fontSize: 13, lineHeight: 19 },
+    surplusUnit: { color: Colors.textFaint, fontSize: 13, fontWeight: '600' },
     statRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xs },
+    breakdownToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: Spacing.xs },
+    breakdownToggleText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+    breakdownCaption: { color: Colors.textMuted, fontSize: 13, lineHeight: 19 },
     billsCard: { gap: Spacing.sm },
     sectionTitle: { color: Colors.text, fontSize: 14, fontWeight: '700' },
     billRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },

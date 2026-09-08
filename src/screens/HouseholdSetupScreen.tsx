@@ -16,7 +16,7 @@ const CURRENCIES = [
 type Tab = 'create' | 'join';
 
 export default function HouseholdSetupScreen() {
-    const { createHousehold, joinHousehold } = useFinance();
+    const { createHousehold, createSampleHousehold, joinHousehold } = useFinance();
     const { signOut } = useAuth();
     const [tab, setTab] = useState<Tab>('create');
 
@@ -24,11 +24,13 @@ export default function HouseholdSetupScreen() {
     const [ownerName, setOwnerName] = useState('');
     const [currency, setCurrency] = useState(CURRENCIES[0]);
     const [saving, setSaving] = useState(false);
+    const [sampleLoading, setSampleLoading] = useState(false);
 
     const [inviteCode, setInviteCode] = useState('');
     const [joinName, setJoinName] = useState('');
     const [joinError, setJoinError] = useState<string | null>(null);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [sampleError, setSampleError] = useState<string | null>(null);
 
     const canCreate = householdName.trim().length > 0 && ownerName.trim().length > 0;
     const canJoin = inviteCode.trim().length >= 4 && joinName.trim().length > 0;
@@ -40,6 +42,14 @@ export default function HouseholdSetupScreen() {
         const result = await createHousehold(householdName.trim(), ownerName.trim(), currency.code, currency.symbol);
         setSaving(false);
         if (result.error) setCreateError(result.error);
+    };
+
+    const handleTrySample = async () => {
+        setSampleError(null);
+        setSampleLoading(true);
+        const result = await createSampleHousehold();
+        setSampleLoading(false);
+        if (result.error) setSampleError(result.error);
     };
 
     const handleJoin = async () => {
@@ -92,6 +102,12 @@ export default function HouseholdSetupScreen() {
                     </View>
                 )}
 
+                <View style={styles.sampleWrap}>
+                    <Text style={styles.sampleHint}>Just want to look around first?</Text>
+                    {sampleError ? <Text style={styles.errorText}>{sampleError}</Text> : null}
+                    <Button label="Try a sample family" variant="secondary" onPress={handleTrySample} loading={sampleLoading} />
+                </View>
+
                 <Pressable onPress={() => signOut()} style={styles.signOutBtn}>
                     <Text style={styles.signOutText}>Sign out</Text>
                 </Pressable>
@@ -117,6 +133,8 @@ const styles = StyleSheet.create({
     currencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
     currencyBtn: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
     errorText: { color: Colors.warning, fontSize: 13 },
+    sampleWrap: { alignItems: 'center', gap: Spacing.sm, paddingTop: Spacing.sm },
+    sampleHint: { color: Colors.textFaint, fontSize: 12 },
     signOutBtn: { alignItems: 'center', paddingTop: Spacing.md },
     signOutText: { color: Colors.textFaint, fontSize: 13 },
 });

@@ -36,6 +36,7 @@ interface FinanceContextValue {
     recordMilestones: (keys: string[]) => Promise<void>;
 
     createHousehold: (householdName: string, ownerName: string, currencyCode: string, currencySymbol: string) => Promise<{ error: string | null }>;
+    createSampleHousehold: () => Promise<{ error: string | null }>;
     joinHousehold: (inviteCode: string, memberName: string) => Promise<{ error: string | null }>;
     inviteMember: (email: string, role: MemberRole, permission: MemberPermission) => Promise<{ code: string | null; error: string | null }>;
     removeMember: (id: string) => void;
@@ -266,6 +267,138 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
     }, [user, loadEverything]);
 
+    // "Try a sample family" -- seeds a brand-new household with 6 months of
+    // realistic data (income, spending, a debt, a behind-pace goal, an
+    // already-hit goal, net worth crossing positive) so every intelligence
+    // screen has something real to show in the first minute, no manual data
+    // entry required. Self-contained: builds its own category id lookup
+    // instead of reading component state, since state set by an in-flight
+    // insert isn't visible to this closure until after a re-render.
+    const createSampleHousehold = useCallback(async (): Promise<{ error: string | null }> => {
+        if (!user) return { error: 'Not signed in.' };
+        try {
+            const { data, error } = await supabase.rpc('create_household', {
+                household_name: 'The Adeyemi Family', currency_code: 'NGN', currency_symbol: '₦', owner_name: 'You',
+            });
+            if (error) throw error;
+            const memberRow = toCamelCase<HouseholdMember>(data);
+            const { data: hhRow, error: hhErr } = await supabase.from('households').select('*').eq('id', (data as any).household_id).single();
+            if (hhErr || !hhRow) throw hhErr || new Error('Household created but could not be loaded.');
+            const hh = toCamelCase<Household>(hhRow);
+            const householdId = hh.id;
+
+            const { data: catRows, error: catErr } = await supabase.from('categories')
+                .insert(defaultCategories().map((c) => toSnakeCase({ ...c, householdId })))
+                .select();
+            if (catErr) throw catErr;
+            const cat = (name: string): string => {
+                const id = (catRows ?? []).find((r: any) => r.name === name)?.id;
+                if (!id) throw new Error(`Missing default category: ${name}`);
+                return id;
+            };
+
+            const today = new Date();
+            const dateFor = (monthsAgo: number, day: number) => {
+                const d = new Date(today.getFullYear(), today.getMonth() - monthsAgo, day);
+                return d.toISOString().slice(0, 10);
+            };
+            const firstOfMonth = (monthsAgo: number) => {
+                const d = new Date(today.getFullYear(), today.getMonth() - monthsAgo, 1);
+                return d.toISOString().slice(0, 10);
+            };
+
+            await supabase.from('accounts').insert([
+                toSnakeCase({ householdId, name: 'Joint Checking', type: 'bank', balance: 9200 }),
+                toSnakeCase({ householdId, name: 'Emergency Savings', type: 'bank', balance: 3000 }),
+            ]);
+
+            const { data: incomeSourceRow, error: incErr } = await supabase.from('income_sources')
+                .insert(toSnakeCase({ householdId, name: 'Salary', isPrimary: true, isRecurring: true, expectedMonthlyAmount: 6200 }))
+                .select().single();
+            if (incErr) throw incErr;
+
+            await supabase.from('recurring_bills').insert([
+                toSnakeCase({ householdId, name: 'Rent', amount: 1800, dueDay: 1, categoryId: cat('Housing'), active: true }),
+                toSnakeCase({ householdId, name: 'Auto Loan Payment', amount: 450, dueDay: 5, categoryId: cat('Debt Payments'), active: true }),
+                toSnakeCase({ householdId, name: 'Credit Card Payment', amount: 400, dueDay: 20, categoryId: cat('Debt Payments'), active: true }),
+                toSnakeCase({ householdId, name: 'Streaming bundle', amount: 25, dueDay: 15, categoryId: cat('Subscriptions'), active: true }),
+            ]);
+
+            await supabase.from('debts').insert([
+                toSnakeCase({ householdId, name: 'Auto Loan', type: 'auto', balance: 12000, originalPrincipal: 18000, aprPct: 7.5, minPayment: 450 }),
+                toSnakeCase({ householdId, name: 'Visa Credit Card', type: 'credit_card', balance: 3200, aprPct: 24.99, minPayment: 400 }),
+            ]);
+
+            // Home Deposit: behind pace, so the goal-gap and "biggest
+            // opportunity" features have something real to react to.
+            const deadlineYear = today.getFullYear() + (today.getMonth() >= 5 ? 1 : 0);
+            const { data: goal1, error: g1Err } = await supabase.from('goals')
+                .insert(toSnakeCase({ householdId, type: 'savings', icon: 'home', title: 'Home Deposit', targetValue: 20000, currentValue: 8500, deadline: `${deadlineYear}-06-30` }))
+                .select().single();
+            if (g1Err) throw g1Err;
+            // Family Vacation: already complete, so the milestone celebration
+            // has something to fire on first load.
+            const { data: goal2, error: g2Err } = await supabase.from('goals')
+                .insert(toSnakeCase({ householdId, type: 'savings', icon: 'airplane', title: 'Family Vacation', targetValue: 2000, currentValue: 2000 }))
+                .select().single();
+            if (g2Err) throw g2Err;
+
+            const contributions: Record<string, unknown>[] = [];
+            for (let m = 5; m >= 0; m--) contributions.push(toSnakeCase({ goalId: goal1.id, date: dateFor(m, 25), amount: 700 }));
+            contributions.push(toSnakeCase({ goalId: goal2.id, date: dateFor(5, 20), amount: 2000 }));
+            await supabase.from('goal_contributions').insert(contributions);
+
+            // Six months of transactions: months 3-5 are the "before" window,
+            // months 0-2 the "after" -- discretionary spending grows much
+            // faster than income between them, which is what the
+            // lifestyle-creep detector is built to catch.
+            const transactions: Record<string, unknown>[] = [];
+            const pushTx = (monthsAgo: number, day: number, type: 'income' | 'expense', amount: number, categoryName: string, description: string, extra: Record<string, unknown> = {}) => {
+                transactions.push(toSnakeCase({
+                    householdId, date: dateFor(monthsAgo, day), type, amount, categoryId: cat(categoryName),
+                    ownership: 'shared', description, isRecurring: false, ...extra,
+                }));
+            };
+            for (let m = 5; m >= 0; m--) {
+                const recent = m <= 2;
+                pushTx(m, 5, 'income', recent ? 6200 : 5750, 'Salary', 'Salary', { incomeSourceId: incomeSourceRow.id });
+                pushTx(m, 1, 'expense', 1800, 'Housing', 'Rent');
+                pushTx(m, 8, 'expense', recent ? 700 : 650, 'Groceries', 'Groceries');
+                pushTx(m, 10, 'expense', recent ? 300 : 280, 'Utilities', 'Utilities');
+                pushTx(m, 12, 'expense', recent ? 300 : 270, 'Transport', 'Fuel & transport');
+                pushTx(m, 15, 'expense', recent ? 500 : 250, 'Dining Out', 'Dining out');
+                pushTx(m, 18, 'expense', recent ? 400 : 150, 'Entertainment', 'Entertainment');
+                pushTx(m, 20, 'expense', recent ? 300 : 100, 'Subscriptions', 'Subscriptions');
+                pushTx(m, 22, 'expense', recent ? 850 : 800, 'Debt Payments', 'Loan & card payments');
+                pushTx(m, 25, 'expense', 700, 'Savings Transfer', 'Transfer to savings');
+            }
+            const { error: txErr } = await supabase.from('transactions').insert(transactions);
+            if (txErr) throw txErr;
+
+            // One budget, set to genuinely run over (planned 400 < actual
+            // 500), so the daily insight has something concrete to lead
+            // with. Deliberately not budgeting Groceries too: with a whole
+            // month's spend logged as a single lump transaction, the pacing
+            // projection reads spend that's actually under budget as "on
+            // pace to exceed" -- a demo-data artifact, not a real signal.
+            await supabase.from('budgets').insert(
+                toSnakeCase({ householdId, categoryId: cat('Dining Out'), period: currentPeriod(), planned: 400 }),
+            );
+
+            // Net worth: negative five months ago, positive today -- fires
+            // the "net worth turned positive" milestone on first load.
+            await supabase.from('net_worth_snapshots').insert([
+                toSnakeCase({ householdId, date: firstOfMonth(5), totalAssets: 8000, totalLiabilities: 16000, netWorth: -8000 }),
+                toSnakeCase({ householdId, date: firstOfMonth(0), totalAssets: 22700, totalLiabilities: 15200, netWorth: 7500 }),
+            ]);
+
+            await loadEverything(hh, memberRow.id, 'full');
+            return { error: null };
+        } catch (e: any) {
+            return { error: e?.message || 'Could not set up the sample family.' };
+        }
+    }, [user, loadEverything]);
+
     const joinHousehold = useCallback(async (inviteCode: string, memberName: string): Promise<{ error: string | null }> => {
         if (!user) return { error: 'Not signed in.' };
         try {
@@ -418,7 +551,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         isLoading, isOnboarded: !!household, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
         investments, debts, otherAssets, netWorthHistory, seenMilestoneKeys, recordMilestones,
-        createHousehold, joinHousehold, inviteMember, removeMember,
+        createHousehold, createSampleHousehold, joinHousehold, inviteMember, removeMember,
         addCategory: categoryCrud.add, updateCategory: categoryCrud.update, removeCategory: categoryCrud.remove,
         addAccount: accountCrud.add, updateAccount: accountCrud.update, removeAccount: accountCrud.remove,
         addIncomeSource: incomeSourceCrud.add, removeIncomeSource: incomeSourceCrud.remove,
@@ -435,7 +568,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         isLoading, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
         investments, debts, otherAssets, netWorthHistory, seenMilestoneKeys, recordMilestones,
-        createHousehold, joinHousehold, inviteMember, removeMember,
+        createHousehold, createSampleHousehold, joinHousehold, inviteMember, removeMember,
         categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
         bulkAddTransactions, uploadReceiptForTransaction,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,

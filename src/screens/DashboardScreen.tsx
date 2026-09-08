@@ -16,6 +16,7 @@ import { computeAllCategoryTrends, generateSpendingInsights } from '../intellige
 import { computeAllGoalPaces } from '../intelligence/goalPace';
 import { computeFinancialHealthReport, healthStatusLabel } from '../intelligence/health';
 import { generateIncomeInsights } from '../intelligence/income';
+import { detectLifestyleCreep } from '../intelligence/lifestyleCreep';
 import { pickDailyInsight } from '../intelligence/dailyInsight';
 import { detectMilestones, MilestoneCandidate } from '../intelligence/milestones';
 import { formatMoney } from '../utils/currency';
@@ -54,10 +55,11 @@ export default function DashboardScreen() {
 
     const budgetInsights = useMemo(() => generateBudgetInsights(budgetLines, symbol), [budgetLines, symbol]);
     const spendingInsights = useMemo(() => generateSpendingInsights(computeAllCategoryTrends(transactions, categories), symbol), [transactions, categories, symbol]);
+    const lifestyleCreep = useMemo(() => detectLifestyleCreep(transactions, symbol), [transactions, symbol]);
     const today = todayISO();
     const dailyInsight = useMemo(
-        () => pickDailyInsight([...budgetInsights, ...spendingInsights, ...incomeInsights], today),
-        [budgetInsights, spendingInsights, incomeInsights, today],
+        () => pickDailyInsight([...budgetInsights, ...spendingInsights, ...incomeInsights, ...(lifestyleCreep ? [lifestyleCreep] : [])], today),
+        [budgetInsights, spendingInsights, incomeInsights, lifestyleCreep, today],
     );
 
     const milestoneCandidates = useMemo(

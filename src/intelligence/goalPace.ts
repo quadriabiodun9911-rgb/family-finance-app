@@ -73,3 +73,35 @@ export function computeGoalPace(goal: FinancialGoal, symbol: string): GoalPace {
 export function computeAllGoalPaces(goals: FinancialGoal[], symbol: string): GoalPace[] {
     return goals.map((g) => computeGoalPace(g, symbol));
 }
+
+export interface GoalGapOption {
+    label: string;
+    amount: number;
+}
+
+export interface GoalGapPlan {
+    shortfall: number;
+    options: GoalGapOption[];
+}
+
+// "What could change the outcome" -- a shortfall isn't one number to close,
+// it's a few different-sized levers a household could pull (alone or mixed)
+// to turn a goal from behind-pace back to achievable.
+export function computeGoalGapPlan(pace: GoalPace): GoalGapPlan | null {
+    if (pace.onTrack !== false || pace.requiredMonthlyRate === null) return null;
+    const shortfall = Math.max(0, pace.requiredMonthlyRate - pace.monthlyRate);
+    if (shortfall <= 0) return null;
+
+    const round10 = (n: number) => Math.round(n / 10) * 10;
+    const a = round10(shortfall * 0.45);
+    const b = round10(shortfall * 0.35);
+    const c = Math.max(0, Math.round(shortfall - a - b));
+
+    const options: GoalGapOption[] = [
+        { label: 'Reduce discretionary spending by', amount: a },
+        { label: 'Increase your monthly contribution by', amount: b },
+        { label: 'Redirect recurring or subscription costs of', amount: c },
+    ].filter((o) => o.amount > 0);
+
+    return { shortfall, options };
+}

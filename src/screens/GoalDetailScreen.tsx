@@ -7,7 +7,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Card, ProgressBar, Button } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
-import { computeGoalPace } from '../intelligence/goalPace';
+import { computeGoalPace, computeGoalGapPlan } from '../intelligence/goalPace';
 import { formatMoney } from '../utils/currency';
 import { shortDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/types';
@@ -21,6 +21,7 @@ export default function GoalDetailScreen() {
     const [amount, setAmount] = useState('');
 
     const pace = useMemo(() => goal ? computeGoalPace(goal, symbol) : null, [goal, symbol]);
+    const gapPlan = useMemo(() => pace ? computeGoalGapPlan(pace) : null, [pace]);
 
     if (!goal || !pace) {
         return (
@@ -55,6 +56,24 @@ export default function GoalDetailScreen() {
                     <ProgressBar pct={pace.progressPct} color={pace.onTrack === false ? Colors.watch : Colors.good} height={10} />
                     <Text style={styles.narrative}>{pace.narrative}</Text>
                 </Card>
+
+                {gapPlan && (
+                    <Card style={styles.gapCard}>
+                        <Text style={styles.sectionTitle}>What could change the outcome</Text>
+                        <Text style={styles.gapIntro}>
+                            You're {formatMoney(gapPlan.shortfall, symbol)}/month short of the pace needed. Any one of these — or a mix — closes the gap:
+                        </Text>
+                        {gapPlan.options.map((o, i) => (
+                            <View key={i} style={styles.gapOptionRow}>
+                                <Ionicons name="arrow-forward-circle-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.gapOptionText}>{o.label} {formatMoney(o.amount, symbol)}/month</Text>
+                            </View>
+                        ))}
+                        <View style={styles.gapPotential}>
+                            <Text style={styles.gapPotentialText}>🟢 New potential: Achievable</Text>
+                        </View>
+                    </Card>
+                )}
 
                 <Card style={styles.contributeCard}>
                     <Text style={styles.sectionTitle}>{isDebt ? 'Log a payment' : 'Add a contribution'}</Text>
@@ -96,6 +115,12 @@ const styles = StyleSheet.create({
     amounts: { color: Colors.text, fontSize: 22, fontWeight: '800' },
     of: { color: Colors.textMuted, fontSize: 14, fontWeight: '500' },
     narrative: { color: Colors.textMuted, fontSize: 13, lineHeight: 19 },
+    gapCard: { gap: Spacing.sm },
+    gapIntro: { color: Colors.textMuted, fontSize: 13, lineHeight: 19 },
+    gapOptionRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+    gapOptionText: { color: Colors.text, fontSize: 13, flex: 1 },
+    gapPotential: { marginTop: Spacing.xs, backgroundColor: Colors.goodMuted, borderRadius: Radius.md, padding: Spacing.sm, alignItems: 'center' },
+    gapPotentialText: { color: Colors.good, fontSize: 13, fontWeight: '800' },
     contributeCard: { gap: Spacing.sm },
     sectionTitle: { color: Colors.text, fontSize: 14, fontWeight: '700' },
     contributeRow: { flexDirection: 'row', gap: Spacing.sm },

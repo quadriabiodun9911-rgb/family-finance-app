@@ -8,13 +8,20 @@ import { useFinance } from '../context/FinanceContext';
 import { computeCashFlowSummary } from '../intelligence/cashFlow';
 import { computeBudgetLines } from '../intelligence/budgetPlan';
 import { computeAllGoalPaces } from '../intelligence/goalPace';
-import { computeFinancialHealthReport } from '../intelligence/health';
+import { computeFinancialHealthReport, healthVerdict, healthVerdictLabel } from '../intelligence/health';
 import { generateIncomeInsights } from '../intelligence/income';
 import { generateSpendingInsights, computeAllCategoryTrends } from '../intelligence/spending';
 import { generateBudgetInsights } from '../intelligence/budgetPlan';
-import { generateCoachSummary, computeAffordability } from '../intelligence/coach';
+import { generateCoachSummary, computeAffordability, computeBiggestOpportunity } from '../intelligence/coach';
+import { detectLifestyleCreep } from '../intelligence/lifestyleCreep';
 import { currentPeriod } from '../utils/date';
 import { formatMoney } from '../utils/currency';
+
+const VERDICT_META = {
+    healthy: { color: Colors.good, bg: Colors.goodMuted, icon: '🟢' },
+    attention: { color: Colors.watch, bg: Colors.watchMuted, icon: '🟠' },
+    critical: { color: Colors.warning, bg: Colors.warningMuted, icon: '🔴' },
+};
 
 export default function CoachScreen() {
     const { household, transactions, accounts, recurringBills, budgets, categories, goals, incomeSources, debts } = useFinance();
@@ -29,13 +36,18 @@ export default function CoachScreen() {
     const health = useMemo(() => computeFinancialHealthReport(cashFlow, budgetLines, goalPaces, debts, incomeInsights), [cashFlow, budgetLines, goalPaces, debts, incomeInsights]);
 
     const trends = useMemo(() => computeAllCategoryTrends(transactions, categories), [transactions, categories]);
+    const lifestyleCreep = useMemo(() => detectLifestyleCreep(transactions, symbol), [transactions, symbol]);
     const allInsights = useMemo(() => [
         ...generateBudgetInsights(budgetLines, symbol),
         ...generateSpendingInsights(trends, symbol),
         ...incomeInsights,
-    ], [budgetLines, trends, incomeInsights, symbol]);
+        ...(lifestyleCreep ? [lifestyleCreep] : []),
+    ], [budgetLines, trends, incomeInsights, lifestyleCreep, symbol]);
 
     const summary = useMemo(() => generateCoachSummary(health, allInsights, symbol), [health, allInsights, symbol]);
+    const verdict = healthVerdict(health.score);
+    const verdictMeta = VERDICT_META[verdict];
+    const biggestOpportunity = useMemo(() => computeBiggestOpportunity(goalPaces, recurringBills, symbol), [goalPaces, recurringBills, symbol]);
 
     const scenarioValue = parseFloat(scenarioAmount);
     const affordability = !Number.isNaN(scenarioValue) && scenarioValue > 0 ? computeAffordability(scenarioValue, cashFlow, symbol) : null;
@@ -45,9 +57,19 @@ export default function CoachScreen() {
             <ScreenHeader title="Ask the Coach" subtitle="How are we doing? Can we afford this?" />
             <ScrollView contentContainerStyle={styles.container}>
                 <Card style={styles.summaryCard}>
+                    <View style={[styles.verdictBadge, { backgroundColor: verdictMeta.bg, borderColor: verdictMeta.color }]}>
+                        <Text style={styles.verdictBadgeIcon}>{verdictMeta.icon}</Text>
+                        <Text style={[styles.verdictBadgeText, { color: verdictMeta.color }]}>{healthVerdictLabel(verdict)}</Text>
+                    </View>
                     <Text style={styles.headline}>{summary.headline}</Text>
                     {summary.focusAreas.map((f, i) => <Text key={i} style={styles.focusLine}>{i + 1}. {f}</Text>)}
                     <Text style={styles.priority}>{summary.priority}</Text>
+                    {biggestOpportunity && (
+                        <View style={styles.opportunityBox}>
+                            <Text style={styles.opportunityLabel}>Biggest opportunity</Text>
+                            <Text style={styles.opportunityText}>{biggestOpportunity}</Text>
+                        </View>
+                    )}
                 </Card>
 
                 <Card style={styles.scenarioCard}>
@@ -91,9 +113,15 @@ const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: Colors.bg },
     container: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: Spacing.xxl },
     summaryCard: { gap: Spacing.sm },
+    verdictBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: Spacing.md, paddingVertical: 4 },
+    verdictBadgeIcon: { fontSize: 12 },
+    verdictBadgeText: { fontSize: 12, fontWeight: '800' },
     headline: { color: Colors.text, fontSize: 15, fontWeight: '700', lineHeight: 21 },
     focusLine: { color: Colors.textMuted, fontSize: 13, lineHeight: 19 },
     priority: { color: Colors.primary, fontSize: 13, fontWeight: '700', marginTop: 4 },
+    opportunityBox: { marginTop: Spacing.xs, backgroundColor: Colors.surfaceAlt, borderRadius: Radius.md, padding: Spacing.md, gap: 4 },
+    opportunityLabel: { color: Colors.textFaint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    opportunityText: { color: Colors.text, fontSize: 13, lineHeight: 19 },
     scenarioCard: { gap: Spacing.sm },
     sectionTitle: { color: Colors.text, fontSize: 14, fontWeight: '700' },
     scenarioHint: { color: Colors.textMuted, fontSize: 12, lineHeight: 17 },

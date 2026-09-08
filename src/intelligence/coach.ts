@@ -1,6 +1,7 @@
-import { FinancialHealthReport, Insight } from '../types';
+import { FinancialHealthReport, Insight, RecurringBill } from '../types';
 import { CashFlowSummary } from './cashFlow';
 import { healthStatusLabel } from './health';
+import { GoalPace } from './goalPace';
 
 export type AffordabilityVerdict = 'comfortable' | 'tight' | 'not-recommended';
 
@@ -49,4 +50,25 @@ export function generateCoachSummary(report: FinancialHealthReport, insights: In
         : 'Priority: keep doing what you\'re doing — every tracked area is in good shape.';
 
     return { headline, focusAreas, priority };
+}
+
+// The single concrete "here's what to do" line for the household -- finds
+// the goal furthest behind pace and, where one exists, a recurring bill
+// large enough to meaningfully close that gap if trimmed or renegotiated.
+export function computeBiggestOpportunity(goalPaces: GoalPace[], recurringBills: RecurringBill[], symbol: string): string | null {
+    const behind = goalPaces
+        .filter((p) => p.onTrack === false && p.requiredMonthlyRate !== null)
+        .sort((a, b) => (b.requiredMonthlyRate! - b.monthlyRate) - (a.requiredMonthlyRate! - a.monthlyRate))[0];
+    if (!behind) return null;
+    const shortfall = Math.max(0, (behind.requiredMonthlyRate || 0) - behind.monthlyRate);
+    if (shortfall <= 0) return null;
+
+    const candidate = recurringBills
+        .filter((b) => b.active && b.amount > 0 && b.amount <= shortfall * 1.5)
+        .sort((a, b) => b.amount - a.amount)[0];
+
+    if (candidate) {
+        return `Trimming or renegotiating "${candidate.name}" (${symbol}${Math.round(candidate.amount).toLocaleString()}/month) and redirecting it toward "${behind.goal.title}" would close most of your ${symbol}${Math.round(shortfall).toLocaleString()}/month gap.`;
+    }
+    return `Redirecting an extra ${symbol}${Math.round(shortfall).toLocaleString()}/month toward "${behind.goal.title}" would put it back on track for its deadline.`;
 }

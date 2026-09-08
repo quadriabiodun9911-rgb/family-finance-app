@@ -79,3 +79,21 @@ export function healthStatusLabel(status: HealthAreaStatus): string {
         case 'off-track': return 'Needs attention';
     }
 }
+
+// A single top-line read on the whole household, mirroring the per-area
+// point bands above (strong=100, on-track=80, watch=55, off-track=25).
+export type HealthVerdict = 'healthy' | 'attention' | 'critical';
+
+export function healthVerdict(score: number): HealthVerdict {
+    if (score >= 80) return 'healthy';
+    if (score >= 55) return 'attention';
+    return 'critical';
+}
+
+export function healthVerdictLabel(verdict: HealthVerdict): string {
+    switch (verdict) {
+        case 'healthy': return 'Healthy';
+        case 'attention': return 'Needs attention';
+        case 'critical': return 'Critical';
+    }
+}

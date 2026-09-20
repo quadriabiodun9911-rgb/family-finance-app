@@ -54,6 +54,15 @@ export default function LedgerScreen() {
     const ledger = useMemo(() => computeLedger(transactions, accounts, categories, accountId), [transactions, accounts, categories, accountId]);
     const trialBalance = useMemo(() => computeTrialBalance(accounts, debts, categories, transactions), [accounts, debts, categories, transactions]);
     const isBalanced = Math.abs(trialBalance.totalDebits - trialBalance.totalCredits) < 0.01;
+    // computeTrialBalance pushes rows as assets, then liabilities, then
+    // categories in whatever order the categories array happens to be in
+    // (income/expense interleaved) -- sort into the conventional grouping
+    // order so the section headers below aren't just an accident of
+    // construction order.
+    const sortedTbRows = useMemo(
+        () => [...trialBalance.rows].sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)),
+        [trialBalance.rows],
+    );
 
     const handleRowPress = (entry: LedgerEntry) => {
         Alert.alert(entry.transaction.description || entry.categoryName, undefined, [
@@ -141,7 +150,7 @@ export default function LedgerScreen() {
                 </>
             ) : (
                 <FlatList
-                    data={trialBalance.rows}
+                    data={sortedTbRows}
                     keyExtractor={(r, i) => `${r.type}-${r.name}-${i}`}
                     contentContainerStyle={styles.listContent}
                     ListHeaderComponent={
@@ -163,7 +172,7 @@ export default function LedgerScreen() {
                     }
                     ListEmptyComponent={<EmptyState icon="calculator-outline" title="Nothing to balance yet" message="Add an account, debt, or a few transactions to see a trial balance." />}
                     renderItem={({ item, index }) => {
-                        const prevType = index > 0 ? trialBalance.rows[index - 1].type : null;
+                        const prevType = index > 0 ? sortedTbRows[index - 1].type : null;
                         return (
                             <>
                                 {item.type !== prevType && <Text style={styles.tbGroupLabel}>{TYPE_LABEL[item.type]}</Text>}

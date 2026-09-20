@@ -54,8 +54,12 @@ export default function DebtIntelligenceScreen() {
 
     const startEdit = (id: string, apr?: number, payment?: number) => {
         setEditingId(id);
-        setEditApr(apr ? String(apr) : '');
-        setEditPayment(payment ? String(payment) : '');
+        // !== undefined, not truthy -- an explicit 0% APR or $0 minimum
+        // payment (e.g. an interest-free family loan) is falsy but not
+        // "unset", and a bare `apr ? ... : ''` would blank the field, then
+        // silently erase the saved 0 on the next Save if left untouched.
+        setEditApr(apr !== undefined ? String(apr) : '');
+        setEditPayment(payment !== undefined ? String(payment) : '');
     };
     const saveEdit = (id: string) => {
         const apr = parseFloat(editApr);
@@ -166,7 +170,7 @@ export default function DebtIntelligenceScreen() {
                                             </View>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.debtName}>{d.name}</Text>
-                                                <Text style={styles.debtMeta}>{meta.label}{d.aprPct ? ` · ${d.aprPct}% APR` : ''}</Text>
+                                                <Text style={styles.debtMeta}>{meta.label}{d.aprPct !== undefined ? ` · ${d.aprPct}% APR` : ''}</Text>
                                             </View>
                                             <Text style={styles.debtBalance}>{formatMoney(d.balance, symbol)}</Text>
                                         </Pressable>

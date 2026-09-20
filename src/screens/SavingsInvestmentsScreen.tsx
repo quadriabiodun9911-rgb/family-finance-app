@@ -11,6 +11,7 @@ import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { computeNetWorth, netWorthTrend } from '../intelligence/netWorth';
 import { formatMoney } from '../utils/currency';
+import { todayISO } from '../utils/date';
 import { InvestmentType } from '../types';
 import { RootStackParamList } from '../navigation/types';
 
@@ -93,7 +94,7 @@ export default function SavingsInvestmentsScreen() {
                 <Card style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Investments</Text>
                     {investments.map((i) => <Row key={i.id} icon="trending-up" name={i.name} value={i.currentValue} symbol={symbol} onDelete={() => confirmDelete(i.name, () => removeInvestment(i.id))} />)}
-                    <QuickAddRow namePlaceholder="e.g. S&P 500 ETF" amountPlaceholder="Current value" onAdd={(name, amount) => addInvestment({ name, type: 'other' as InvestmentType, costBasis: amount, currentValue: amount, purchaseDate: new Date().toISOString().slice(0, 10) })} />
+                    <QuickAddRow namePlaceholder="e.g. S&P 500 ETF" amountPlaceholder="Current value" onAdd={(name, amount) => addInvestment({ name, type: 'other' as InvestmentType, costBasis: amount, currentValue: amount, purchaseDate: todayISO() })} />
                     <Text style={styles.hint}>Long-press an item to remove it.</Text>
                 </Card>
 

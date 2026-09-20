@@ -1,5 +1,12 @@
+// Local calendar date, not UTC -- .toISOString() would convert first, which
+// silently rolls the date back a day for anyone east of UTC (most of Africa,
+// Europe, and Asia -- including this app's own NGN default) during the
+// window each day between local midnight and UTC midnight catching up.
 export function toISODate(d: Date): string {
-    return d.toISOString().slice(0, 10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 export function todayISO(): string {

@@ -1,5 +1,5 @@
 import { Account, RecurringBill, Transaction } from '../types';
-import { currentPeriod, shiftPeriod, todayISO, daysBetween } from '../utils/date';
+import { currentPeriod, shiftPeriod, todayISO, daysBetween, toISODate } from '../utils/date';
 
 export interface UpcomingBill {
     bill: RecurringBill;
@@ -31,7 +31,7 @@ function nextDueDate(dueDay: number, fromISO: string): string {
     const from = new Date(fromISO + 'T00:00:00');
     const candidate = new Date(from.getFullYear(), from.getMonth(), Math.min(dueDay, 28));
     if (candidate.getTime() < from.setHours(0, 0, 0, 0)) candidate.setMonth(candidate.getMonth() + 1);
-    return candidate.toISOString().slice(0, 10);
+    return toISODate(candidate);
 }
 
 export function computeUpcomingBills(bills: RecurringBill[], withinDays = 14): UpcomingBill[] {

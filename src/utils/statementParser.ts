@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import { Category } from '../types';
 import { generateId } from './id';
 import { parseQuickAddText } from './quickAddParser';
+import { toISODate, todayISO } from './date';
 
 function findColumn(headers: string[], patterns: RegExp[]): string | null {
     for (const h of headers) {
@@ -21,8 +22,8 @@ function parseDateFlexible(raw: string): string {
         return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     }
     const parsed = new Date(trimmed);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-    return new Date().toISOString().slice(0, 10);
+    if (!Number.isNaN(parsed.getTime())) return toISODate(parsed);
+    return todayISO();
 }
 
 export interface ParsedStatementRow {

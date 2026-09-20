@@ -24,7 +24,7 @@ export default function GoalCard({ pace, symbol, onPress }: { pace: GoalPace; sy
                         <Text style={styles.title}>{goal.title}</Text>
                         <Text style={styles.sub}>
                             {formatMoney(goal.currentValue, symbol)} of {formatMoney(goal.targetValue, symbol)}
-                            {goal.deadline ? ` · by ${new Date(goal.deadline).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}
+                            {goal.deadline ? ` · by ${new Date(goal.deadline + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}
                         </Text>
                     </View>
                     <Text style={styles.pct}>{progressPct.toFixed(0)}%</Text>

@@ -8,7 +8,7 @@ import { supabase } from '../utils/supabaseClient';
 import { fetchAll, insertRow, updateRow, deleteRow } from '../utils/db';
 import { toCamelCase, toSnakeCase } from '../utils/caseConvert';
 import { defaultCategories } from '../utils/defaultData';
-import { todayISO, currentPeriod, addDaysISO } from '../utils/date';
+import { todayISO, currentPeriod, addDaysISO, toISODate } from '../utils/date';
 import { useAuth } from './AuthContext';
 import { Colors } from '../theme/colors';
 import { uploadReceiptImage } from '../utils/receiptStorage';
@@ -304,14 +304,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             };
 
             const today = new Date();
-            const dateFor = (monthsAgo: number, day: number) => {
-                const d = new Date(today.getFullYear(), today.getMonth() - monthsAgo, day);
-                return d.toISOString().slice(0, 10);
-            };
-            const firstOfMonth = (monthsAgo: number) => {
-                const d = new Date(today.getFullYear(), today.getMonth() - monthsAgo, 1);
-                return d.toISOString().slice(0, 10);
-            };
+            const dateFor = (monthsAgo: number, day: number) => toISODate(new Date(today.getFullYear(), today.getMonth() - monthsAgo, day));
+            const firstOfMonth = (monthsAgo: number) => toISODate(new Date(today.getFullYear(), today.getMonth() - monthsAgo, 1));
 
             await supabase.from('accounts').insert([
                 toSnakeCase({ householdId, name: 'Joint Checking', type: 'bank', balance: 9200 }),

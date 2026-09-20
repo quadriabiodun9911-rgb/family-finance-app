@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import QuickAddRow from '../components/QuickAddRow';
 import { Card, Button } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { computeNetWorth, netWorthTrend } from '../intelligence/netWorth';
 import { formatMoney } from '../utils/currency';
 import { todayISO } from '../utils/date';
@@ -35,6 +36,7 @@ export default function SavingsInvestmentsScreen() {
         debts, removeDebt, otherAssets, addOtherAsset, removeOtherAsset,
         netWorthHistory, recordNetWorthSnapshot,
     } = useFinance();
+    const { confirm } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
 
     const breakdown = useMemo(() => computeNetWorth(accounts, goals, investments, otherAssets, debts), [accounts, goals, investments, otherAssets, debts]);
@@ -46,7 +48,7 @@ export default function SavingsInvestmentsScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [breakdown.totalAssets, breakdown.totalLiabilities]);
 
-    const confirmDelete = (label: string, fn: () => void) => Alert.alert('Remove', `Remove ${label}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: fn }]);
+    const confirmDelete = (label: string, fn: () => void) => confirm({ title: 'Remove', message: `Remove ${label}?`, confirmLabel: 'Remove', onConfirm: fn });
 
     return (
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

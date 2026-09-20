@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Card, EmptyState } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { computeLedger, computeTrialBalance, LedgerEntry, TrialBalanceRow } from '../intelligence/ledger';
 import { exportCsv } from '../utils/csvExport';
 import { formatMoney } from '../utils/currency';
@@ -47,6 +48,7 @@ function LedgerRow({ entry, symbol, onPress }: { entry: LedgerEntry; symbol: str
 export default function LedgerScreen() {
     const navigation = useNavigation<Nav>();
     const { household, transactions, accounts, categories, debts, removeTransaction } = useFinance();
+    const { show, notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const [tab, setTab] = useState<Tab>('transactions');
     const [accountId, setAccountId] = useState<string | null>(null);
@@ -65,11 +67,14 @@ export default function LedgerScreen() {
     );
 
     const handleRowPress = (entry: LedgerEntry) => {
-        Alert.alert(entry.transaction.description || entry.categoryName, undefined, [
-            { text: 'Edit', onPress: () => navigation.navigate('AddTransaction', { transactionId: entry.transaction.id }) },
-            { text: 'Delete', style: 'destructive', onPress: () => removeTransaction(entry.transaction.id) },
-            { text: 'Cancel', style: 'cancel' },
-        ]);
+        show({
+            title: entry.transaction.description || entry.categoryName,
+            options: [
+                { label: 'Edit', onPress: () => navigation.navigate('AddTransaction', { transactionId: entry.transaction.id }) },
+                { label: 'Delete', destructive: true, onPress: () => removeTransaction(entry.transaction.id) },
+                { label: 'Cancel', cancel: true, onPress: () => {} },
+            ],
+        });
     };
 
     const handleExport = async () => {
@@ -94,7 +99,7 @@ export default function LedgerScreen() {
             }));
             await exportCsv(`ledger-${accountId ? accounts.find((a) => a.id === accountId)?.name.replace(/\s+/g, '_') : 'all-accounts'}.csv`, rows);
         } catch (e: any) {
-            Alert.alert('Export failed', e?.message || 'Could not export.');
+            notice({ title: 'Export failed', message: e?.message || 'Could not export.' });
         }
     };
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, Alert, Linking } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import TransactionRow from '../components/TransactionRow';
 import { EmptyState } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet, ActionSheetOption } from '../context/ActionSheetContext';
 import { RootStackParamList } from '../navigation/types';
 import { CategoryType, Transaction } from '../types';
 import { getReceiptSignedUrl } from '../utils/receiptStorage';
@@ -19,35 +20,36 @@ type Filter = 'all' | CategoryType;
 export default function TransactionsScreen() {
     const navigation = useNavigation<Nav>();
     const { household, transactions, categories, removeTransaction, uploadReceiptForTransaction } = useFinance();
+    const { show, notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const [filter, setFilter] = useState<Filter>('all');
 
     const handleAttachReceipt = async (transactionId: string) => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-            Alert.alert('Permission needed', 'Allow photo access to attach a receipt.');
+            notice({ title: 'Permission needed', message: 'Allow photo access to attach a receipt.' });
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
         if (result.canceled || !result.assets?.[0]?.uri) return;
         const { error } = await uploadReceiptForTransaction(transactionId, result.assets[0].uri);
-        if (error) Alert.alert('Upload failed', error);
+        if (error) notice({ title: 'Upload failed', message: error });
     };
 
     const handleViewReceipt = async (path: string) => {
         const url = await getReceiptSignedUrl(path);
-        if (!url) { Alert.alert('Could not open receipt', 'Try again in a moment.'); return; }
+        if (!url) { notice({ title: 'Could not open receipt', message: 'Try again in a moment.' }); return; }
         Linking.openURL(url);
     };
 
     const handleRowPress = (item: Transaction) => {
-        const options: any[] = [];
-        options.push({ text: 'Edit', onPress: () => navigation.navigate('AddTransaction', { transactionId: item.id }) });
-        if (item.receiptUrl) options.push({ text: 'View receipt', onPress: () => handleViewReceipt(item.receiptUrl!) });
-        else options.push({ text: 'Attach receipt', onPress: () => handleAttachReceipt(item.id) });
-        options.push({ text: 'Delete', style: 'destructive', onPress: () => removeTransaction(item.id) });
-        options.push({ text: 'Cancel', style: 'cancel' });
-        Alert.alert(item.description || 'Transaction', undefined, options);
+        const options: ActionSheetOption[] = [];
+        options.push({ label: 'Edit', onPress: () => navigation.navigate('AddTransaction', { transactionId: item.id }) });
+        if (item.receiptUrl) options.push({ label: 'View receipt', onPress: () => handleViewReceipt(item.receiptUrl!) });
+        else options.push({ label: 'Attach receipt', onPress: () => handleAttachReceipt(item.id) });
+        options.push({ label: 'Delete', destructive: true, onPress: () => removeTransaction(item.id) });
+        options.push({ label: 'Cancel', cancel: true, onPress: () => {} });
+        show({ title: item.description || 'Transaction', options });
     };
 
     const filtered = useMemo(() => {

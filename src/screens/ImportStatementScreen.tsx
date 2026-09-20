@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Card, Button, EmptyState } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { parseStatementCsv, ParsedStatementRow } from '../utils/statementParser';
 import { readPickedFileAsText } from '../utils/readTextFile';
 import { formatMoney } from '../utils/currency';
@@ -16,6 +17,7 @@ import { shortDate } from '../utils/date';
 export default function ImportStatementScreen() {
     const navigation = useNavigation();
     const { household, categories, accounts, bulkAddTransactions } = useFinance();
+    const { notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
 
     const [rows, setRows] = useState<ParsedStatementRow[]>([]);
@@ -62,12 +64,10 @@ export default function ImportStatementScreen() {
         })));
         setImporting(false);
         if (result.error) {
-            Alert.alert('Import failed', result.error);
+            notice({ title: 'Import failed', message: result.error });
             return;
         }
-        Alert.alert('Imported', `Added ${result.count} transaction${result.count === 1 ? '' : 's'}.`, [
-            { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        notice({ title: 'Imported', message: `Added ${result.count} transaction${result.count === 1 ? '' : 's'}.`, onDismiss: () => navigation.goBack() });
     };
 
     return (

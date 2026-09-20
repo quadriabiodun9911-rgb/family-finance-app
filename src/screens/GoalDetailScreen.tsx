@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TextInput, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TextInput, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Card, ProgressBar, Button } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { computeGoalPace, computeGoalGapPlan } from '../intelligence/goalPace';
 import { formatMoney } from '../utils/currency';
 import { shortDate } from '../utils/date';
@@ -16,6 +17,7 @@ export default function GoalDetailScreen() {
     const navigation = useNavigation();
     const route = useRoute<RouteProp<RootStackParamList, 'GoalDetail'>>();
     const { household, goals, contributeToGoal, removeGoal } = useFinance();
+    const { confirm } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const goal = goals.find((g) => g.id === route.params.goalId);
     const [amount, setAmount] = useState('');
@@ -41,10 +43,10 @@ export default function GoalDetailScreen() {
     };
 
     const handleDelete = () => {
-        Alert.alert('Delete goal', `Remove "${goal.title}"? This can't be undone.`, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => { removeGoal(goal.id); navigation.goBack(); } },
-        ]);
+        confirm({
+            title: 'Delete goal', message: `Remove "${goal.title}"? This can't be undone.`, confirmLabel: 'Delete',
+            onConfirm: () => { removeGoal(goal.id); navigation.goBack(); },
+        });
     };
 
     return (

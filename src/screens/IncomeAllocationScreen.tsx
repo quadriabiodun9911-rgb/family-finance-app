@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
 import { Card, ProgressBar, Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { computeCashFlowSummary } from '../intelligence/cashFlow';
 import { averageMonthlyExpense } from '../intelligence/risk';
 import {
@@ -25,6 +26,7 @@ export default function IncomeAllocationScreen() {
         household, transactions, accounts, recurringBills, debts, categories,
         updateAllocationTarget, updateCategory, addCategory,
     } = useFinance();
+    const { notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const period = currentPeriod();
 
@@ -64,14 +66,14 @@ export default function IncomeAllocationScreen() {
         setSaving(true);
         const result = await updateAllocationTarget(parseFloat(draftExpenses) || 0, parseFloat(draftSavings) || 0, parseFloat(draftEmergency) || 0);
         setSaving(false);
-        if (result.error) { Alert.alert('Could not save', result.error); return; }
+        if (result.error) { notice({ title: 'Could not save', message: result.error }); return; }
         setEditing(false);
     };
     const applyRecommendation = async () => {
         setSaving(true);
         const result = await updateAllocationTarget(recommendation.expensesPct, recommendation.savingsPct, recommendation.emergencyPct);
         setSaving(false);
-        if (result.error) { Alert.alert('Could not save', result.error); return; }
+        if (result.error) { notice({ title: 'Could not save', message: result.error }); return; }
         setEditing(false);
     };
 

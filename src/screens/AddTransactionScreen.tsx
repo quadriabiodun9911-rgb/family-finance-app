@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Alert, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { RootStackParamList } from '../navigation/types';
 import { CategoryType, Ownership, RecurringFrequency } from '../types';
 import { todayISO, nowTimeHHMM } from '../utils/date';
@@ -17,6 +18,7 @@ export default function AddTransactionScreen() {
     const navigation = useNavigation();
     const route = useRoute<RouteProp<RootStackParamList, 'AddTransaction'>>();
     const { household, categories, members, incomeSources, accounts, transactions, addTransaction, updateTransaction } = useFinance();
+    const { notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
 
     const editingId = route.params?.transactionId;
@@ -51,7 +53,7 @@ export default function AddTransactionScreen() {
     const handlePickReceipt = async () => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-            Alert.alert('Permission needed', 'Allow photo access to attach a receipt.');
+            notice({ title: 'Permission needed', message: 'Allow photo access to attach a receipt.' });
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
@@ -66,7 +68,7 @@ export default function AddTransactionScreen() {
             try {
                 receiptUrl = await uploadReceiptImage(household.id, receiptUri);
             } catch (e: any) {
-                Alert.alert('Receipt upload failed', e?.message || 'Saving the transaction without it.');
+                notice({ title: 'Receipt upload failed', message: e?.message || 'Saving the transaction without it.' });
             }
         }
         const fields = {

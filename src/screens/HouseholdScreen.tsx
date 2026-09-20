@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Share } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
@@ -8,6 +8,7 @@ import { Card, Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import { MemberPermission, MemberRole } from '../types';
 
 const ROLE_OPTIONS: { role: MemberRole; permission: MemberPermission; label: string }[] = [
@@ -23,6 +24,7 @@ export default function HouseholdScreen() {
         categories, addCategory, removeCategory, recurringBills, addRecurringBill, removeRecurringBill,
     } = useFinance();
     const { signOut, user } = useAuth();
+    const { confirm } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const [inviteEmail, setInviteEmail] = useState('');
     const [newRole, setNewRole] = useState(ROLE_OPTIONS[0]);
@@ -30,7 +32,7 @@ export default function HouseholdScreen() {
     const [inviting, setInviting] = useState(false);
     const [inviteError, setInviteError] = useState<string | null>(null);
 
-    const confirmRemove = (label: string, fn: () => void) => Alert.alert('Remove', `Remove ${label}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: fn }]);
+    const confirmRemove = (label: string, fn: () => void) => confirm({ title: 'Remove', message: `Remove ${label}?`, confirmLabel: 'Remove', onConfirm: fn });
 
     const handleInvite = async () => {
         if (!inviteEmail.trim()) return;

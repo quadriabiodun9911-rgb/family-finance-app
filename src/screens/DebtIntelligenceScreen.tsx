@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
 import { Card, Button, ProgressBar, FormField, EmptyState } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
+import { useActionSheet } from '../context/ActionSheetContext';
 import {
     computeAmortization, computeDebtSummary, compareStrategies, computeMortgageEquity, StrategyComparison,
 } from '../intelligence/debt';
@@ -32,6 +33,7 @@ function monthsToLabel(months: number): string {
 
 export default function DebtIntelligenceScreen() {
     const { household, debts, otherAssets, addDebt, updateDebt, removeDebt } = useFinance();
+    const { confirm } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
 
     const summary = useMemo(() => computeDebtSummary(debts), [debts]);
@@ -92,7 +94,7 @@ export default function DebtIntelligenceScreen() {
     };
 
     const confirmDelete = (name: string, id: string) => {
-        Alert.alert('Remove debt', `Remove "${name}"?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => removeDebt(id) }]);
+        confirm({ title: 'Remove debt', message: `Remove "${name}"?`, confirmLabel: 'Remove', onConfirm: () => removeDebt(id) });
     };
 
     return (

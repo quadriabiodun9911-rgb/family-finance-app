@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Colors, Spacing } from '../../theme/colors';
 
 export default function EmptyState({ icon = 'sparkles-outline', title, message }: { icon?: any; title: string; message: string }) {

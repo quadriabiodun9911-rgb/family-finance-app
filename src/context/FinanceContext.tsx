@@ -82,6 +82,7 @@ interface FinanceContextValue {
     recordNetWorthSnapshot: (totalAssets: number, totalLiabilities: number) => void;
 
     updateAllocationTarget: (expensesPct: number, savingsPct: number, emergencyPct: number) => Promise<{ error: string | null }>;
+    updateHouseholdSettings: (patch: { name?: string; currencyCode?: string; currencySymbol?: string }) => Promise<{ error: string | null }>;
 }
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
@@ -586,6 +587,17 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
     }, [household]);
 
+    const updateHouseholdSettings = useCallback(async (patch: { name?: string; currencyCode?: string; currencySymbol?: string }): Promise<{ error: string | null }> => {
+        if (!household) return { error: 'No household yet.' };
+        try {
+            await updateRow('households', household.id, patch);
+            setHousehold((prev) => (prev ? { ...prev, ...patch } : prev));
+            return { error: null };
+        } catch (e: any) {
+            return { error: e?.message || 'Could not save household settings.' };
+        }
+    }, [household]);
+
     // ─── Milestone celebrations (recorded once so they never re-fire) ──────
     const recordMilestones = useCallback(async (keys: string[]): Promise<void> => {
         if (!household || keys.length === 0) return;
@@ -635,7 +647,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         addDebt: debtCrud.add, updateDebt: debtCrud.update, removeDebt: debtCrud.remove,
         addOtherAsset: otherAssetCrud.add, removeOtherAsset: otherAssetCrud.remove,
         recordNetWorthSnapshot,
-        updateAllocationTarget,
+        updateAllocationTarget, updateHouseholdSettings,
     }), [
         isLoading, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
@@ -645,7 +657,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         addTransaction, updateTransaction, removeTransaction,
         bulkAddTransactions, uploadReceiptForTransaction,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,
-        investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot, updateAllocationTarget,
+        investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot, updateAllocationTarget, updateHouseholdSettings,
     ]);
 
     return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { Category, Transaction } from '../types';
 import { formatMoney } from '../utils/currency';

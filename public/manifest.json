@@ -1,0 +1,9 @@
+{
+  "name": "Family Finance",
+  "short_name": "Family Finance",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220"
+}

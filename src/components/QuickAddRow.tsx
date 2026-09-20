@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Colors, Radius, Spacing } from '../theme/colors';
 
 export default function QuickAddRow({ namePlaceholder, amountPlaceholder, onAdd, showAmount = true }: {

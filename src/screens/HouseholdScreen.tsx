@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import ScreenHeader from '../components/ScreenHeader';
 import QuickAddRow from '../components/QuickAddRow';
 import { Card, Button, FormField } from '../components/ui';
@@ -9,6 +9,7 @@ import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useActionSheet } from '../context/ActionSheetContext';
+import { CURRENCIES } from '../utils/currencies';
 import { MemberPermission, MemberRole } from '../types';
 
 const ROLE_OPTIONS: { role: MemberRole; permission: MemberPermission; label: string }[] = [
@@ -22,17 +23,27 @@ export default function HouseholdScreen() {
     const {
         household, members, myPermission, pendingInvites, inviteMember, removeMember,
         categories, addCategory, removeCategory, recurringBills, addRecurringBill, removeRecurringBill,
+        updateHouseholdSettings,
     } = useFinance();
     const { signOut, user } = useAuth();
-    const { confirm } = useActionSheet();
+    const { confirm, notice } = useActionSheet();
     const symbol = household?.currencySymbol || '$';
     const [inviteEmail, setInviteEmail] = useState('');
     const [newRole, setNewRole] = useState(ROLE_OPTIONS[0]);
     const [lastCode, setLastCode] = useState<string | null>(null);
     const [inviting, setInviting] = useState(false);
     const [inviteError, setInviteError] = useState<string | null>(null);
+    const [savingCurrency, setSavingCurrency] = useState(false);
 
     const confirmRemove = (label: string, fn: () => void) => confirm({ title: 'Remove', message: `Remove ${label}?`, confirmLabel: 'Remove', onConfirm: fn });
+
+    const handleChangeCurrency = async (code: string, curSymbol: string) => {
+        if (code === household?.currencyCode || savingCurrency) return;
+        setSavingCurrency(true);
+        const result = await updateHouseholdSettings({ currencyCode: code, currencySymbol: curSymbol });
+        setSavingCurrency(false);
+        if (result.error) notice({ title: 'Could not change currency', message: result.error });
+    };
 
     const handleInvite = async () => {
         if (!inviteEmail.trim()) return;
@@ -53,6 +64,28 @@ export default function HouseholdScreen() {
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
             <ScreenHeader title="Household" subtitle={household?.name} />
             <ScrollView contentContainerStyle={styles.container}>
+                <Card style={styles.sectionCard}>
+                    <Text style={styles.sectionTitle}>Currency</Text>
+                    {myPermission === 'full' ? (
+                        <>
+                            <View style={styles.currencyRow}>
+                                {CURRENCIES.map((c) => (
+                                    <Pressable
+                                        key={c.code}
+                                        onPress={() => handleChangeCurrency(c.code, c.symbol)}
+                                        style={[styles.currencyChip, household?.currencyCode === c.code && styles.currencyChipActive]}
+                                    >
+                                        <Text style={[styles.currencyChipText, household?.currencyCode === c.code && styles.currencyChipTextActive]}>{c.symbol} {c.code}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                            <Text style={styles.hint}>Changes how amounts are displayed everywhere. Existing numbers aren't converted — only the symbol changes.</Text>
+                        </>
+                    ) : (
+                        <Text style={styles.hint}>Currently {household?.currencyCode}. Only a full-access member can change it.</Text>
+                    )}
+                </Card>
+
                 <Card style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Family members</Text>
                     {members.map((m) => (
@@ -148,6 +181,11 @@ const styles = StyleSheet.create({
     container: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: Spacing.xxl },
     sectionCard: { gap: Spacing.sm },
     sectionTitle: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+    currencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+    currencyChip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.pill, backgroundColor: Colors.surfaceAlt, borderWidth: 1, borderColor: Colors.border },
+    currencyChipActive: { backgroundColor: Colors.primaryMuted, borderColor: Colors.primary },
+    currencyChipText: { color: Colors.textMuted, fontSize: 13, fontWeight: '700' },
+    currencyChipTextActive: { color: Colors.primary },
     memberRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 6 },
     avatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     avatarText: { color: '#fff', fontWeight: '800', fontSize: 13 },

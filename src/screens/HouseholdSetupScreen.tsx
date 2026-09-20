@@ -6,13 +6,7 @@ import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { consumePendingInviteCode } from '../utils/pendingInvite';
-
-const CURRENCIES = [
-    { code: 'NGN', symbol: '₦' },
-    { code: 'USD', symbol: '$' },
-    { code: 'GBP', symbol: '£' },
-    { code: 'EUR', symbol: '€' },
-];
+import { CURRENCIES } from '../utils/currencies';
 
 type Tab = 'create' | 'join';
 

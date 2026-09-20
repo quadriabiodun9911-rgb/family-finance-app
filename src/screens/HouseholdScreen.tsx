@@ -44,7 +44,7 @@ export default function HouseholdScreen() {
     };
 
     const shareCode = (code: string) => {
-        Share.share({ message: `Join our household on Family Finance! Use invite code: ${code}` }).catch(() => {});
+        Share.share({ message: `Join our household on Family Finance! Sign up in the app, enter this invite code when you do, and you'll be added automatically: ${code}` }).catch(() => {});
     };
 
     return (

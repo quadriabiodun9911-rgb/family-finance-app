@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, FormField } from '../components/ui';
 import { Colors, Spacing } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { setPendingInviteCode } from '../utils/pendingInvite';
 
 type Mode = 'signIn' | 'signUp';
 
@@ -13,6 +14,7 @@ export default function AuthScreen() {
     const [mode, setMode] = useState<Mode>('signIn');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [inviteCode, setInviteCode] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [info, setInfo] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -25,7 +27,14 @@ export default function AuthScreen() {
         const result = mode === 'signIn' ? await signIn(email.trim(), password) : await signUp(email.trim(), password);
         setLoading(false);
         if (result.error) { setError(result.error); return; }
-        if (mode === 'signUp') setInfo('Account created. If email confirmation is required, check your inbox before signing in.');
+        if (mode === 'signUp') {
+            if (inviteCode.trim()) {
+                await setPendingInviteCode(inviteCode.trim());
+                setInfo('Account created. If email confirmation is required, check your inbox — then sign in and we\'ll take you straight to joining the household.');
+            } else {
+                setInfo('Account created. If email confirmation is required, check your inbox before signing in.');
+            }
+        }
     };
 
     return (
@@ -48,6 +57,15 @@ export default function AuthScreen() {
                     <View style={styles.form}>
                         <FormField label="Email" placeholder="you@example.com" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
                         <FormField label="Password" placeholder="At least 6 characters" secureTextEntry value={password} onChangeText={setPassword} />
+                        {mode === 'signUp' && (
+                            <FormField
+                                label="Invite code (optional)"
+                                placeholder="Joining a household someone invited you to? Enter it here"
+                                autoCapitalize="characters"
+                                value={inviteCode}
+                                onChangeText={setInviteCode}
+                            />
+                        )}
                     </View>
 
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}

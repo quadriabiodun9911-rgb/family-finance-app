@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
+import { consumePendingInviteCode } from '../utils/pendingInvite';
 
 const CURRENCIES = [
     { code: 'NGN', symbol: '₦' },
@@ -34,6 +35,12 @@ export default function HouseholdSetupScreen() {
 
     const canCreate = householdName.trim().length > 0 && ownerName.trim().length > 0;
     const canJoin = inviteCode.trim().length >= 4 && joinName.trim().length > 0;
+
+    useEffect(() => {
+        consumePendingInviteCode().then((code) => {
+            if (code) { setInviteCode(code); setTab('join'); }
+        });
+    }, []);
 
     const handleCreate = async () => {
         if (!canCreate) return;

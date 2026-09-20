@@ -80,6 +80,8 @@ interface FinanceContextValue {
     removeOtherAsset: (id: string) => void;
 
     recordNetWorthSnapshot: (totalAssets: number, totalLiabilities: number) => void;
+
+    updateAllocationTarget: (expensesPct: number, savingsPct: number, emergencyPct: number) => void;
 }
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
@@ -515,6 +517,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }).catch((e) => console.warn('contribution failed', e.message));
     }, [goals]);
 
+    // ─── Income allocation target (the three "jars") ───────────────────────
+    const updateAllocationTarget = useCallback((expensesPct: number, savingsPct: number, emergencyPct: number) => {
+        if (!household) return;
+        const patch = { allocExpensesPct: expensesPct, allocSavingsPct: savingsPct, allocEmergencyPct: emergencyPct };
+        updateRow('households', household.id, patch).then(() => {
+            setHousehold((prev) => (prev ? { ...prev, ...patch } : prev));
+        }).catch((e) => console.warn('allocation target update failed', e.message));
+    }, [household]);
+
     // ─── Milestone celebrations (recorded once so they never re-fire) ──────
     const recordMilestones = useCallback(async (keys: string[]): Promise<void> => {
         if (!household || keys.length === 0) return;
@@ -564,6 +575,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         addDebt: debtCrud.add, updateDebt: debtCrud.update, removeDebt: debtCrud.remove,
         addOtherAsset: otherAssetCrud.add, removeOtherAsset: otherAssetCrud.remove,
         recordNetWorthSnapshot,
+        updateAllocationTarget,
     }), [
         isLoading, household, members, myMemberId, myPermission, pendingInvites,
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
@@ -572,7 +584,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
         bulkAddTransactions, uploadReceiptForTransaction,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,
-        investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot,
+        investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot, updateAllocationTarget,
     ]);
 
     return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

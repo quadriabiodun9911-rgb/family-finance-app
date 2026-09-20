@@ -33,6 +33,8 @@ const QUICK_LINKS: { key: keyof RootStackParamList; label: string; icon: any; de
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses', desc: 'Financial health & affordability' },
     { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half', desc: 'What could go wrong, and what to do' },
     { key: 'DebtIntelligence', label: 'Debt & Mortgage', icon: 'card', desc: 'Payoff timelines, interest & strategy' },
+    { key: 'IncomeAllocation', label: 'Income Allocation', icon: 'pie-chart', desc: 'Split income across Expenses, Savings & Emergency' },
+    { key: 'Ledger', label: 'General Ledger', icon: 'book', desc: 'Every transaction, with running balances' },
 ];
 
 export default function DashboardScreen() {

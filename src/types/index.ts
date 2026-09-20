@@ -24,6 +24,10 @@ export interface Household {
     name: string;
     currencyCode: string; // ISO code, e.g. 'NGN', 'USD'
     currencySymbol: string;
+    // Target monthly income split across the three "jars" -- always sums to 100.
+    allocExpensesPct: number;
+    allocSavingsPct: number;
+    allocEmergencyPct: number;
     createdAt: string;
 }
 
@@ -58,6 +62,9 @@ export interface Category {
     // expectation spending-trend narratives compare against.
     monthlyTarget?: number;
     isDefault?: boolean;
+    // Which of the three income-allocation jars this expense category counts
+    // toward. Unset (or income-type categories) implicitly means 'expenses'.
+    jar?: 'expenses' | 'savings' | 'emergency';
 }
 
 export type AccountType = 'cash' | 'bank' | 'card' | 'other';

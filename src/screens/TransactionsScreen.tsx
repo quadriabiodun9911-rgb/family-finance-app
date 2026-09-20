@@ -42,6 +42,7 @@ export default function TransactionsScreen() {
 
     const handleRowPress = (item: Transaction) => {
         const options: any[] = [];
+        options.push({ text: 'Edit', onPress: () => navigation.navigate('AddTransaction', { transactionId: item.id }) });
         if (item.receiptUrl) options.push({ text: 'View receipt', onPress: () => handleViewReceipt(item.receiptUrl!) });
         else options.push({ text: 'Attach receipt', onPress: () => handleAttachReceipt(item.id) });
         options.push({ text: 'Delete', style: 'destructive', onPress: () => removeTransaction(item.id) });
@@ -59,6 +60,9 @@ export default function TransactionsScreen() {
             <View style={styles.header}>
                 <Text style={styles.title}>Transactions</Text>
                 <View style={styles.headerActions}>
+                    <Pressable style={styles.importBtn} onPress={() => navigation.navigate('Ledger')}>
+                        <Ionicons name="book-outline" size={20} color={Colors.text} />
+                    </Pressable>
                     <Pressable style={styles.importBtn} onPress={() => navigation.navigate('ImportStatement')}>
                         <Ionicons name="cloud-upload-outline" size={20} color={Colors.text} />
                     </Pressable>

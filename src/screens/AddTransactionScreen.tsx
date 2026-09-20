@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,25 +11,37 @@ import { useFinance } from '../context/FinanceContext';
 import { RootStackParamList } from '../navigation/types';
 import { CategoryType, Ownership, RecurringFrequency } from '../types';
 import { todayISO, nowTimeHHMM } from '../utils/date';
-import { uploadReceiptImage } from '../utils/receiptStorage';
+import { uploadReceiptImage, getReceiptSignedUrl } from '../utils/receiptStorage';
 
 export default function AddTransactionScreen() {
     const navigation = useNavigation();
     const route = useRoute<RouteProp<RootStackParamList, 'AddTransaction'>>();
-    const { household, categories, members, incomeSources, accounts, addTransaction } = useFinance();
+    const { household, categories, members, incomeSources, accounts, transactions, addTransaction, updateTransaction } = useFinance();
     const symbol = household?.currencySymbol || '$';
 
-    const [type, setType] = useState<CategoryType>(route.params?.type || 'expense');
-    const [amount, setAmount] = useState('');
-    const [description, setDescription] = useState('');
-    const [categoryId, setCategoryId] = useState<string | null>(null);
-    const [memberId, setMemberId] = useState<string | null>(members[0]?.id ?? null);
-    const [incomeSourceId, setIncomeSourceId] = useState<string | null>(null);
-    const [ownership, setOwnership] = useState<Ownership>('shared');
-    const [isRecurring, setIsRecurring] = useState(false);
+    const editingId = route.params?.transactionId;
+    const existing = editingId ? transactions.find((t) => t.id === editingId) : undefined;
+    const isEditing = !!existing;
+
+    const [type, setType] = useState<CategoryType>(existing?.type || route.params?.type || 'expense');
+    const [amount, setAmount] = useState(existing ? String(existing.amount) : '');
+    const [description, setDescription] = useState(existing?.description || '');
+    const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
+    const [memberId, setMemberId] = useState<string | null>(existing?.memberId ?? members[0]?.id ?? null);
+    const [incomeSourceId, setIncomeSourceId] = useState<string | null>(existing?.incomeSourceId ?? null);
+    const [ownership, setOwnership] = useState<Ownership>(existing?.ownership || 'shared');
+    const [isRecurring, setIsRecurring] = useState(existing?.isRecurring || false);
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [existingReceiptSignedUrl, setExistingReceiptSignedUrl] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const [time, setTime] = useState(nowTimeHHMM());
+    const [time, setTime] = useState(existing?.time || nowTimeHHMM());
+
+    useEffect(() => {
+        if (existing?.receiptUrl) {
+            getReceiptSignedUrl(existing.receiptUrl).then(setExistingReceiptSignedUrl);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [existing?.receiptUrl]);
 
     const relevantCategories = categories.filter((c) => c.type === type);
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
@@ -49,7 +61,7 @@ export default function AddTransactionScreen() {
     const handleSave = async () => {
         if (!canSave || !categoryId || !household) return;
         setSaving(true);
-        let receiptUrl: string | undefined;
+        let receiptUrl: string | undefined = existing?.receiptUrl;
         if (receiptUri) {
             try {
                 receiptUrl = await uploadReceiptImage(household.id, receiptUri);
@@ -57,27 +69,32 @@ export default function AddTransactionScreen() {
                 Alert.alert('Receipt upload failed', e?.message || 'Saving the transaction without it.');
             }
         }
-        addTransaction({
-            date: todayISO(),
+        const fields = {
+            date: existing?.date || todayISO(),
             type,
             amount: numericAmount,
             categoryId,
             memberId: memberId || undefined,
             incomeSourceId: type === 'income' ? incomeSourceId || undefined : undefined,
-            accountId: accounts[0]?.id,
+            accountId: existing?.accountId || accounts[0]?.id,
             ownership,
             description: description.trim(),
             isRecurring,
             recurringFrequency: isRecurring ? 'monthly' as RecurringFrequency : undefined,
             receiptUrl,
             time: time.trim(),
-        });
+        };
+        if (isEditing && existing) {
+            updateTransaction(existing.id, fields);
+        } else {
+            addTransaction(fields);
+        }
         navigation.goBack();
     };
 
     return (
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-            <ScreenHeader title={type === 'income' ? 'Add Income' : 'Add Expense'} />
+            <ScreenHeader title={isEditing ? (type === 'income' ? 'Edit Income' : 'Edit Expense') : (type === 'income' ? 'Add Income' : 'Add Expense')} />
             <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
                 <View style={styles.typeToggle}>
                     <Pressable style={[styles.typeBtn, type === 'expense' && styles.typeBtnExpenseActive]} onPress={() => { setType('expense'); setCategoryId(null); }}>
@@ -170,6 +187,13 @@ export default function AddTransactionScreen() {
                                 <Ionicons name="close" size={16} color={Colors.textMuted} />
                             </Pressable>
                         </View>
+                    ) : existingReceiptSignedUrl ? (
+                        <View style={styles.receiptPreviewRow}>
+                            <Image source={{ uri: existingReceiptSignedUrl }} style={styles.receiptThumb} />
+                            <Pressable onPress={handlePickReceipt} style={styles.receiptRemoveBtn}>
+                                <Ionicons name="camera-outline" size={16} color={Colors.textMuted} />
+                            </Pressable>
+                        </View>
                     ) : (
                         <Pressable style={styles.receiptPickBtn} onPress={handlePickReceipt}>
                             <Ionicons name="camera-outline" size={18} color={Colors.textMuted} />
@@ -178,7 +202,7 @@ export default function AddTransactionScreen() {
                     )}
                 </View>
 
-                <Button label="Save transaction" onPress={handleSave} disabled={!canSave} loading={saving} />
+                <Button label={isEditing ? 'Save changes' : 'Save transaction'} onPress={handleSave} disabled={!canSave} loading={saving} />
             </ScrollView>
         </SafeAreaView>
     );

@@ -2,7 +2,7 @@ export type RootStackParamList = {
     Auth: undefined;
     HouseholdSetup: undefined;
     Tabs: undefined;
-    AddTransaction: { type?: 'income' | 'expense' } | undefined;
+    AddTransaction: { type?: 'income' | 'expense'; transactionId?: string } | undefined;
     AddGoal: undefined;
     GoalDetail: { goalId: string };
     SavingsInvestments: undefined;
@@ -14,6 +14,8 @@ export type RootStackParamList = {
     ImportStatement: undefined;
     RiskDecision: undefined;
     DebtIntelligence: undefined;
+    Ledger: undefined;
+    IncomeAllocation: undefined;
 };
 
 export type TabParamList = {

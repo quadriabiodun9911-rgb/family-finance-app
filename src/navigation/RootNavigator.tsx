@@ -21,6 +21,8 @@ import HouseholdScreen from '../screens/HouseholdScreen';
 import ImportStatementScreen from '../screens/ImportStatementScreen';
 import RiskDecisionScreen from '../screens/RiskDecisionScreen';
 import DebtIntelligenceScreen from '../screens/DebtIntelligenceScreen';
+import LedgerScreen from '../screens/LedgerScreen';
+import IncomeAllocationScreen from '../screens/IncomeAllocationScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,6 +65,8 @@ export default function RootNavigator() {
                         <Stack.Screen name="ImportStatement" component={ImportStatementScreen} />
                         <Stack.Screen name="RiskDecision" component={RiskDecisionScreen} />
                         <Stack.Screen name="DebtIntelligence" component={DebtIntelligenceScreen} />
+                        <Stack.Screen name="Ledger" component={LedgerScreen} />
+                        <Stack.Screen name="IncomeAllocation" component={IncomeAllocationScreen} />
                     </>
                 )}
             </Stack.Navigator>

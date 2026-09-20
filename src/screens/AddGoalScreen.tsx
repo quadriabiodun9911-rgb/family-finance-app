@@ -3,17 +3,25 @@ import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenHeader from '../components/ScreenHeader';
-import { Button, FormField } from '../components/ui';
+import { Card, Button, FormField } from '../components/ui';
 import { Colors, Radius, Spacing } from '../theme/colors';
 import { useFinance } from '../context/FinanceContext';
 import { GoalIcon, GoalType } from '../types';
+import { RootStackParamList } from '../navigation/types';
 
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+// Debt payoff is deliberately not an option here -- a debt needs to live in
+// the debts table (balance/APR/min payment) to show up in Risk Analysis,
+// the household Health score, Net Worth, and Debt & Mortgage Intelligence.
+// A goal created here has none of that, so a household that tracked a debt
+// only this way would have it invisible everywhere except the Goals tab.
 const TYPE_OPTIONS: { type: GoalType; icon: GoalIcon; label: string }[] = [
     { type: 'savings', icon: 'home', label: 'House deposit' },
     { type: 'savings', icon: 'shield', label: 'Emergency fund' },
     { type: 'savings', icon: 'school', label: "Children's education" },
-    { type: 'debt', icon: 'card', label: 'Debt payoff' },
     { type: 'investment', icon: 'trending-up', label: 'Investment portfolio' },
     { type: 'custom', icon: 'flag', label: 'Custom goal' },
 ];
@@ -24,7 +32,7 @@ const ICON_MAP: Record<GoalIcon, any> = {
 };
 
 export default function AddGoalScreen() {
-    const navigation = useNavigation();
+    const navigation = useNavigation<Nav>();
     const { household, addGoal } = useFinance();
     const symbol = household?.currencySymbol || '$';
 
@@ -44,8 +52,8 @@ export default function AddGoalScreen() {
             type: selected.type,
             icon: selected.icon,
             title: title.trim(),
-            targetValue: selected.type === 'debt' ? 0 : targetValue,
-            currentValue: selected.type === 'debt' ? targetValue : (Number.isNaN(currentValue) ? 0 : currentValue),
+            targetValue,
+            currentValue: Number.isNaN(currentValue) ? 0 : currentValue,
             deadline: deadline.trim() || undefined,
         });
         navigation.goBack();
@@ -69,19 +77,19 @@ export default function AddGoalScreen() {
                 </View>
 
                 <FormField label="Goal name" value={title} onChangeText={setTitle} />
-                <FormField
-                    label={selected.type === 'debt' ? `Current balance (${symbol})` : `Target amount (${symbol})`}
-                    placeholder="0"
-                    keyboardType="decimal-pad"
-                    value={target}
-                    onChangeText={setTarget}
-                />
-                {selected.type !== 'debt' && (
-                    <FormField label={`Already saved (${symbol})`} placeholder="0" keyboardType="decimal-pad" value={current} onChangeText={setCurrent} />
-                )}
+                <FormField label={`Target amount (${symbol})`} placeholder="0" keyboardType="decimal-pad" value={target} onChangeText={setTarget} />
+                <FormField label={`Already saved (${symbol})`} placeholder="0" keyboardType="decimal-pad" value={current} onChangeText={setCurrent} />
                 <FormField label="Deadline (YYYY-MM-DD, optional)" placeholder="2027-06-30" value={deadline} onChangeText={setDeadline} />
 
                 <Button label="Create goal" onPress={handleSave} disabled={!canSave} />
+
+                <Card style={styles.debtHint}>
+                    <Ionicons name="card-outline" size={16} color={Colors.textMuted} />
+                    <Text style={styles.debtHintText}>Paying off a loan or credit card? Track it under Debt & Mortgage Intelligence instead — it feeds your risk analysis, health score, and net worth automatically.</Text>
+                    <Pressable onPress={() => navigation.navigate('DebtIntelligence')}>
+                        <Text style={styles.debtHintLink}>Go there →</Text>
+                    </Pressable>
+                </Card>
             </ScrollView>
         </SafeAreaView>
     );
@@ -95,4 +103,7 @@ const styles = StyleSheet.create({
     chipActive: { backgroundColor: Colors.primaryMuted, borderColor: Colors.primary },
     chipText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
     chipTextActive: { color: Colors.primary },
+    debtHint: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.surfaceAlt },
+    debtHintText: { color: Colors.textMuted, fontSize: 12, lineHeight: 17, flex: 1, minWidth: 200 },
+    debtHintLink: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
 });

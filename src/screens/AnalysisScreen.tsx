@@ -31,13 +31,15 @@ export default function AnalysisScreen() {
     }, [transactions]);
 
     const weeklyData = useMemo(() => {
-        const weeks = Array.from({ length: 6 }, (_, i) => {
-            const end = addDaysISO(todayISO(), -7 * i);
+        // Oldest to newest, left to right -- matching dailyData and
+        // monthlyData below. i=0 is 5 weeks ago, i=5 is this week.
+        return Array.from({ length: 6 }, (_, i) => {
+            const weeksAgo = 5 - i;
+            const end = addDaysISO(todayISO(), -7 * weeksAgo);
             const start = addDaysISO(end, -6);
             const tx = transactions.filter((t) => t.date >= start && t.date <= end);
-            return { label: `W${6 - i}`, value: sumByType(tx, 'expense') };
+            return { label: weeksAgo === 0 ? 'This wk' : `-${weeksAgo}w`, value: sumByType(tx, 'expense') };
         });
-        return weeks;
     }, [transactions]);
 
     const monthlyData = useMemo(() => last6Periods().map((p) => {

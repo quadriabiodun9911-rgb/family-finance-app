@@ -15,13 +15,14 @@ import { shortDate } from '../utils/date';
 
 export default function ImportStatementScreen() {
     const navigation = useNavigation();
-    const { household, categories, bulkAddTransactions } = useFinance();
+    const { household, categories, accounts, bulkAddTransactions } = useFinance();
     const symbol = household?.currencySymbol || '$';
 
     const [rows, setRows] = useState<ParsedStatementRow[]>([]);
     const [fileName, setFileName] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [importing, setImporting] = useState(false);
+    const [accountId, setAccountId] = useState<string | null>(accounts[0]?.id ?? null);
 
     const handlePickFile = async () => {
         setError(null);
@@ -54,6 +55,7 @@ export default function ImportStatementScreen() {
             type: r.type,
             amount: r.amount,
             categoryId: r.categoryId || categories.find((c) => c.type === r.type)?.id || '',
+            accountId: accountId || undefined,
             ownership: 'shared',
             description: r.description,
             isRecurring: false,
@@ -84,6 +86,20 @@ export default function ImportStatementScreen() {
 
                 {rows.length > 0 && (
                     <>
+                        {accounts.length > 0 ? (
+                            <View style={styles.accountPickWrap}>
+                                <Text style={styles.summaryText}>Import into</Text>
+                                <View style={styles.accountChipRow}>
+                                    {accounts.map((a) => (
+                                        <Pressable key={a.id} onPress={() => setAccountId(a.id)} style={[styles.accountChip, accountId === a.id && styles.accountChipActive]}>
+                                            <Text style={[styles.accountChipText, accountId === a.id && styles.accountChipTextActive]}>{a.name}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+                        ) : (
+                            <Text style={styles.hint}>No accounts set up yet — these will import without one. Add an account from Savings & Investments so the Ledger can track a running balance.</Text>
+                        )}
                         <Text style={styles.summaryText}>{includedCount} of {rows.length} rows selected — tap a row to include/exclude it.</Text>
                         <FlatList
                             data={rows}
@@ -124,6 +140,12 @@ const styles = StyleSheet.create({
     errorText: { color: Colors.warning, fontSize: 12 },
     hint: { color: Colors.textFaint, fontSize: 11 },
     summaryText: { color: Colors.textMuted, fontSize: 12 },
+    accountPickWrap: { gap: Spacing.xs },
+    accountChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+    accountChip: { paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radius.pill, backgroundColor: Colors.surfaceAlt, borderWidth: 1, borderColor: Colors.border },
+    accountChipActive: { backgroundColor: Colors.primaryMuted, borderColor: Colors.primary },
+    accountChipText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+    accountChipTextActive: { color: Colors.primary },
     listContent: { paddingBottom: Spacing.md },
     row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
     rowExcluded: { opacity: 0.4 },

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
@@ -44,6 +44,7 @@ export default function IncomeAllocationScreen() {
         emergencyPct: household?.allocEmergencyPct ?? 20,
     };
     const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [draftExpenses, setDraftExpenses] = useState(String(target.expensesPct));
     const [draftSavings, setDraftSavings] = useState(String(target.savingsPct));
     const [draftEmergency, setDraftEmergency] = useState(String(target.emergencyPct));
@@ -58,13 +59,19 @@ export default function IncomeAllocationScreen() {
     };
     const draftSum = (parseFloat(draftExpenses) || 0) + (parseFloat(draftSavings) || 0) + (parseFloat(draftEmergency) || 0);
     const draftValid = Math.abs(draftSum - 100) < 0.5;
-    const saveDraft = () => {
+    const saveDraft = async () => {
         if (!draftValid) return;
-        updateAllocationTarget(parseFloat(draftExpenses) || 0, parseFloat(draftSavings) || 0, parseFloat(draftEmergency) || 0);
+        setSaving(true);
+        const result = await updateAllocationTarget(parseFloat(draftExpenses) || 0, parseFloat(draftSavings) || 0, parseFloat(draftEmergency) || 0);
+        setSaving(false);
+        if (result.error) { Alert.alert('Could not save', result.error); return; }
         setEditing(false);
     };
-    const applyRecommendation = () => {
-        updateAllocationTarget(recommendation.expensesPct, recommendation.savingsPct, recommendation.emergencyPct);
+    const applyRecommendation = async () => {
+        setSaving(true);
+        const result = await updateAllocationTarget(recommendation.expensesPct, recommendation.savingsPct, recommendation.emergencyPct);
+        setSaving(false);
+        if (result.error) { Alert.alert('Could not save', result.error); return; }
         setEditing(false);
     };
 
@@ -90,7 +97,7 @@ export default function IncomeAllocationScreen() {
                     </View>
                     <Text style={styles.recSplit}>{recommendation.expensesPct}% · {recommendation.savingsPct}% · {recommendation.emergencyPct}%</Text>
                     <Text style={styles.recRationale}>{recommendation.rationale}</Text>
-                    <Button label="Use this split" variant="secondary" onPress={applyRecommendation} />
+                    <Button label="Use this split" variant="secondary" onPress={applyRecommendation} loading={saving} />
                 </Card>
 
                 <View style={styles.jarsRow}>
@@ -141,7 +148,7 @@ export default function IncomeAllocationScreen() {
                             {!draftValid && <Text style={styles.errorText}>Must add up to 100% (currently {draftSum}%).</Text>}
                             <View style={styles.editActions}>
                                 <Button label="Cancel" variant="secondary" onPress={() => setEditing(false)} style={{ flex: 1 }} />
-                                <Button label="Save" onPress={saveDraft} disabled={!draftValid} style={{ flex: 1 }} />
+                                <Button label="Save" onPress={saveDraft} disabled={!draftValid} loading={saving} style={{ flex: 1 }} />
                             </View>
                         </>
                     ) : (

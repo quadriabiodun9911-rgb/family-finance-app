@@ -8,7 +8,7 @@ import { formatMoney } from '../utils/currency';
 import { todayISO, nowTimeHHMM } from '../utils/date';
 
 export default function QuickAddTextBar() {
-    const { household, categories, addTransaction } = useFinance();
+    const { household, categories, accounts, addTransaction } = useFinance();
     const symbol = household?.currencySymbol || '$';
     const [text, setText] = useState('');
     const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -28,6 +28,10 @@ export default function QuickAddTextBar() {
             type: result.type,
             amount: result.amount,
             categoryId: result.categoryId,
+            // Defaults to the household's first account, same as the full
+            // Add Transaction form -- without this, quick-added transactions
+            // never appear in a per-account Ledger view or move any balance.
+            accountId: accounts[0]?.id,
             ownership: 'shared',
             description: result.description,
             isRecurring: false,

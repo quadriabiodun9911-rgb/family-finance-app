@@ -81,10 +81,14 @@ interface FinanceContextValue {
 
     recordNetWorthSnapshot: (totalAssets: number, totalLiabilities: number) => void;
 
-    updateAllocationTarget: (expensesPct: number, savingsPct: number, emergencyPct: number) => void;
+    updateAllocationTarget: (expensesPct: number, savingsPct: number, emergencyPct: number) => Promise<{ error: string | null }>;
 }
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
+
+function signedAmount(t: { type: Transaction['type']; amount: number }): number {
+    return t.type === 'income' ? t.amount : -t.amount;
+}
 
 function generateInviteCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
@@ -440,11 +444,58 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const categoryCrud = useMemo(() => makeCrud<Category>('categories', household?.id, setCategories), [household?.id]);
     const accountCrud = useMemo(() => makeCrud<Account>('accounts', household?.id, setAccounts), [household?.id]);
     const incomeSourceCrud = useMemo(() => makeCrud<IncomeSource>('income_sources', household?.id, setIncomeSources), [household?.id]);
-    const transactionCrud = useMemo(() => makeCrud<Transaction>('transactions', household?.id, setTransactions), [household?.id]);
     const recurringBillCrud = useMemo(() => makeCrud<RecurringBill>('recurring_bills', household?.id, setRecurringBills), [household?.id]);
     const investmentCrud = useMemo(() => makeCrud<Investment>('investments', household?.id, setInvestments), [household?.id]);
     const debtCrud = useMemo(() => makeCrud<Debt>('debts', household?.id, setDebts), [household?.id]);
     const otherAssetCrud = useMemo(() => makeCrud<OtherAsset>('other_assets', household?.id, setOtherAssets), [household?.id]);
+
+    // ─── Transactions (bespoke, not generic makeCrud) ──────────────────────
+    // Every transaction that names an account keeps that account's balance
+    // in sync -- add/edit/delete all move the balance by the right signed
+    // amount, so the General Ledger's running-balance column (which walks
+    // backward from the current balance) is actually reconciled to real
+    // transaction history instead of an unrelated manually-typed number.
+    const applyAccountDelta = useCallback((accountId: string | undefined, delta: number) => {
+        if (!accountId || delta === 0) return;
+        setAccounts((prev) => {
+            const acc = prev.find((a) => a.id === accountId);
+            if (!acc) return prev;
+            const newBalance = acc.balance + delta;
+            updateRow('accounts', accountId, { balance: newBalance }).catch((e) => console.warn('account balance sync failed', e.message));
+            return prev.map((a) => (a.id === accountId ? { ...a, balance: newBalance } : a));
+        });
+    }, []);
+
+    const addTransaction = useCallback((t: Omit<Transaction, 'id' | 'createdAt'>) => {
+        if (!household) return;
+        insertRow<Transaction>('transactions', { ...t, householdId: household.id }).then((created) => {
+            setTransactions((prev) => [created, ...prev]);
+            applyAccountDelta(created.accountId, signedAmount(created));
+        }).catch((e) => console.warn('transaction insert failed', e.message));
+    }, [household, applyAccountDelta]);
+
+    const updateTransaction = useCallback((id: string, patch: Partial<Transaction>) => {
+        const previous = transactions.find((t) => t.id === id);
+        updateRow('transactions', id, patch).then(() => {
+            setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+            if (!previous) return;
+            const merged = { ...previous, ...patch };
+            if (previous.accountId === merged.accountId) {
+                applyAccountDelta(merged.accountId, signedAmount(merged) - signedAmount(previous));
+            } else {
+                applyAccountDelta(previous.accountId, -signedAmount(previous));
+                applyAccountDelta(merged.accountId, signedAmount(merged));
+            }
+        }).catch((e) => console.warn('transaction update failed', e.message));
+    }, [transactions, applyAccountDelta]);
+
+    const removeTransaction = useCallback((id: string) => {
+        const previous = transactions.find((t) => t.id === id);
+        deleteRow('transactions', id).then(() => {
+            setTransactions((prev) => prev.filter((t) => t.id !== id));
+            if (previous) applyAccountDelta(previous.accountId, -signedAmount(previous));
+        }).catch((e) => console.warn('transaction delete failed', e.message));
+    }, [transactions, applyAccountDelta]);
 
     const bulkAddTransactions = useCallback(async (rows: Array<Omit<Transaction, 'id' | 'createdAt'>>): Promise<{ error: string | null; count: number }> => {
         if (!household) return { error: 'No household yet.', count: 0 };
@@ -456,11 +507,17 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             if (error) throw error;
             const created = (data ?? []).map((row) => toCamelCase<Transaction>(row));
             setTransactions((prev) => [...created, ...prev]);
+            const deltaByAccount = new Map<string, number>();
+            for (const t of created) {
+                if (!t.accountId) continue;
+                deltaByAccount.set(t.accountId, (deltaByAccount.get(t.accountId) || 0) + signedAmount(t));
+            }
+            for (const [accountId, delta] of deltaByAccount) applyAccountDelta(accountId, delta);
             return { error: null, count: created.length };
         } catch (e: any) {
             return { error: e?.message || 'Import failed.', count: 0 };
         }
-    }, [household]);
+    }, [household, applyAccountDelta]);
 
     const uploadReceiptForTransaction = useCallback(async (transactionId: string, localUri: string): Promise<{ error: string | null }> => {
         if (!household) return { error: 'No household yet.' };
@@ -518,12 +575,21 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     }, [goals]);
 
     // ─── Income allocation target (the three "jars") ───────────────────────
-    const updateAllocationTarget = useCallback((expensesPct: number, savingsPct: number, emergencyPct: number) => {
-        if (!household) return;
+    // Returns the outcome (rather than firing and forgetting like the
+    // simple CRUD helpers) because this write can be legitimately rejected
+    // by RLS -- a 'shared'/'own'-permission member isn't allowed to change
+    // household-level settings -- and the caller needs to tell the user
+    // that, instead of the edit form just closing as if it had saved.
+    const updateAllocationTarget = useCallback(async (expensesPct: number, savingsPct: number, emergencyPct: number): Promise<{ error: string | null }> => {
+        if (!household) return { error: 'No household yet.' };
         const patch = { allocExpensesPct: expensesPct, allocSavingsPct: savingsPct, allocEmergencyPct: emergencyPct };
-        updateRow('households', household.id, patch).then(() => {
+        try {
+            await updateRow('households', household.id, patch);
             setHousehold((prev) => (prev ? { ...prev, ...patch } : prev));
-        }).catch((e) => console.warn('allocation target update failed', e.message));
+            return { error: null };
+        } catch (e: any) {
+            return { error: e?.message || 'Could not save the allocation target.' };
+        }
     }, [household]);
 
     // ─── Milestone celebrations (recorded once so they never re-fire) ──────
@@ -566,7 +632,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         addCategory: categoryCrud.add, updateCategory: categoryCrud.update, removeCategory: categoryCrud.remove,
         addAccount: accountCrud.add, updateAccount: accountCrud.update, removeAccount: accountCrud.remove,
         addIncomeSource: incomeSourceCrud.add, removeIncomeSource: incomeSourceCrud.remove,
-        addTransaction: transactionCrud.add, updateTransaction: transactionCrud.update, removeTransaction: transactionCrud.remove,
+        addTransaction, updateTransaction, removeTransaction,
         bulkAddTransactions, uploadReceiptForTransaction,
         addRecurringBill: recurringBillCrud.add, removeRecurringBill: recurringBillCrud.remove,
         setBudget,
@@ -581,7 +647,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         categories, accounts, incomeSources, transactions, recurringBills, budgets, goals,
         investments, debts, otherAssets, netWorthHistory, seenMilestoneKeys, recordMilestones,
         createHousehold, createSampleHousehold, joinHousehold, inviteMember, removeMember,
-        categoryCrud, accountCrud, incomeSourceCrud, transactionCrud, recurringBillCrud,
+        categoryCrud, accountCrud, incomeSourceCrud, recurringBillCrud,
+        addTransaction, updateTransaction, removeTransaction,
         bulkAddTransactions, uploadReceiptForTransaction,
         setBudget, addGoal, updateGoal, removeGoal, contributeToGoal,
         investmentCrud, debtCrud, otherAssetCrud, recordNetWorthSnapshot, updateAllocationTarget,

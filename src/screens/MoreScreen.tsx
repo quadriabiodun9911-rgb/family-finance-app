@@ -19,6 +19,7 @@ const ITEMS: { key: keyof RootStackParamList; label: string; icon: any }[] = [
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses' },
     { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half' },
     { key: 'DebtIntelligence', label: 'Debt & Mortgage Intelligence', icon: 'card' },
+    { key: 'ImportStatement', label: 'Import Bank Statement or Receipt', icon: 'cloud-upload' },
     { key: 'Ledger', label: 'General Ledger', icon: 'book' },
 ];
 

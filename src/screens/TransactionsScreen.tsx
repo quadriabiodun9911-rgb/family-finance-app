@@ -62,13 +62,13 @@ export default function TransactionsScreen() {
             <View style={styles.header}>
                 <Text style={styles.title}>Transactions</Text>
                 <View style={styles.headerActions}>
-                    <Pressable style={styles.importBtn} onPress={() => navigation.navigate('Ledger')}>
+                    <Pressable style={styles.importBtn} accessibilityLabel="General Ledger" onPress={() => navigation.navigate('Ledger')}>
                         <Ionicons name="book-outline" size={20} color={Colors.text} />
                     </Pressable>
-                    <Pressable style={styles.importBtn} onPress={() => navigation.navigate('ImportStatement')}>
+                    <Pressable style={styles.importBtn} accessibilityLabel="Import bank statement or receipt" onPress={() => navigation.navigate('ImportStatement')}>
                         <Ionicons name="cloud-upload-outline" size={20} color={Colors.text} />
                     </Pressable>
-                    <Pressable style={styles.addBtn} onPress={() => navigation.navigate('AddTransaction')}>
+                    <Pressable style={styles.addBtn} accessibilityLabel="Add transaction" onPress={() => navigation.navigate('AddTransaction')}>
                         <Ionicons name="add" size={22} color="#fff" />
                     </Pressable>
                 </View>

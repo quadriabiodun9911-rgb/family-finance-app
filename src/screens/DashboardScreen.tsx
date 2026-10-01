@@ -17,6 +17,7 @@ import { computeAllGoalPaces } from '../intelligence/goalPace';
 import { computeFinancialHealthReport, healthStatusLabel } from '../intelligence/health';
 import { generateIncomeInsights } from '../intelligence/income';
 import { detectLifestyleCreep } from '../intelligence/lifestyleCreep';
+import { detectCategoryPatterns, detectGoalContributionPatterns, generateBehaviorInsights } from '../intelligence/behaviorPatterns';
 import { pickDailyInsight } from '../intelligence/dailyInsight';
 import { detectMilestones, MilestoneCandidate } from '../intelligence/milestones';
 import { formatMoney } from '../utils/currency';
@@ -58,10 +59,16 @@ export default function DashboardScreen() {
     const budgetInsights = useMemo(() => generateBudgetInsights(budgetLines, symbol), [budgetLines, symbol]);
     const spendingInsights = useMemo(() => generateSpendingInsights(computeAllCategoryTrends(transactions, categories), symbol), [transactions, categories, symbol]);
     const lifestyleCreep = useMemo(() => detectLifestyleCreep(transactions, symbol), [transactions, symbol]);
+    const categoryPatterns = useMemo(() => detectCategoryPatterns(transactions, categories), [transactions, categories]);
+    const goalContributionPatterns = useMemo(() => detectGoalContributionPatterns(goals), [goals]);
+    const behaviorInsights = useMemo(
+        () => generateBehaviorInsights(categoryPatterns, goalContributionPatterns, symbol),
+        [categoryPatterns, goalContributionPatterns, symbol],
+    );
     const today = todayISO();
     const dailyInsight = useMemo(
-        () => pickDailyInsight([...budgetInsights, ...spendingInsights, ...incomeInsights, ...(lifestyleCreep ? [lifestyleCreep] : [])], today),
-        [budgetInsights, spendingInsights, incomeInsights, lifestyleCreep, today],
+        () => pickDailyInsight([...budgetInsights, ...spendingInsights, ...incomeInsights, ...(lifestyleCreep ? [lifestyleCreep] : []), ...behaviorInsights], today),
+        [budgetInsights, spendingInsights, incomeInsights, lifestyleCreep, behaviorInsights, today],
     );
 
     const milestoneCandidates = useMemo(

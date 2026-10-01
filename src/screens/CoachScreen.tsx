@@ -14,6 +14,7 @@ import { generateSpendingInsights, computeAllCategoryTrends } from '../intellige
 import { generateBudgetInsights } from '../intelligence/budgetPlan';
 import { generateCoachSummary, computeAffordability, computeBiggestOpportunity } from '../intelligence/coach';
 import { detectLifestyleCreep } from '../intelligence/lifestyleCreep';
+import { detectCategoryPatterns, detectGoalContributionPatterns, generateBehaviorInsights } from '../intelligence/behaviorPatterns';
 import { currentPeriod } from '../utils/date';
 import { formatMoney } from '../utils/currency';
 
@@ -37,12 +38,19 @@ export default function CoachScreen() {
 
     const trends = useMemo(() => computeAllCategoryTrends(transactions, categories), [transactions, categories]);
     const lifestyleCreep = useMemo(() => detectLifestyleCreep(transactions, symbol), [transactions, symbol]);
+    const categoryPatterns = useMemo(() => detectCategoryPatterns(transactions, categories), [transactions, categories]);
+    const goalContributionPatterns = useMemo(() => detectGoalContributionPatterns(goals), [goals]);
+    const behaviorInsights = useMemo(
+        () => generateBehaviorInsights(categoryPatterns, goalContributionPatterns, symbol),
+        [categoryPatterns, goalContributionPatterns, symbol],
+    );
     const allInsights = useMemo(() => [
         ...generateBudgetInsights(budgetLines, symbol),
         ...generateSpendingInsights(trends, symbol),
         ...incomeInsights,
         ...(lifestyleCreep ? [lifestyleCreep] : []),
-    ], [budgetLines, trends, incomeInsights, lifestyleCreep, symbol]);
+        ...behaviorInsights,
+    ], [budgetLines, trends, incomeInsights, lifestyleCreep, behaviorInsights, symbol]);
 
     const summary = useMemo(() => generateCoachSummary(health, allInsights, symbol), [health, allInsights, symbol]);
     const verdict = healthVerdict(health.score);

@@ -147,30 +147,53 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Unsupported file type. Use a JPG, PNG, or PDF.' }, 400);
     }
 
-    const geminiRes = await fetch(`${GEMINI_API_BASE}/${MODEL}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{
-          role: 'user',
-          parts: [
-            { inline_data: { mime_type: mediaType, data: base64 } },
-            { text: 'Extract every transaction line item from this document.' },
-          ],
-        }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-          maxOutputTokens: 8192,
-        },
-      }),
+    const geminiBody = JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{
+        role: 'user',
+        parts: [
+          { inline_data: { mime_type: mediaType, data: base64 } },
+          { text: 'Extract every transaction line item from this document.' },
+        ],
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+        maxOutputTokens: 8192,
+      },
     });
 
+    // The free tier genuinely does return 503 ("model is currently
+    // experiencing high demand") and 429 (rate limited) under normal use --
+    // both are Google telling the caller to back off and retry, not a
+    // real failure. Retrying automatically here means an ordinary user
+    // hitting this once doesn't have to understand what it means or
+    // manually try again themselves.
+    const RETRY_DELAYS_MS = [500, 1500];
+    let geminiRes: Response;
+    let lastErrBody = '';
+    for (let attempt = 0; ; attempt++) {
+      geminiRes = await fetch(`${GEMINI_API_BASE}/${MODEL}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: geminiBody,
+      });
+      if (geminiRes.ok) break;
+      if ((geminiRes.status !== 503 && geminiRes.status !== 429) || attempt >= RETRY_DELAYS_MS.length) break;
+      lastErrBody = await geminiRes.text();
+      console.error('[statement-scan] retrying after', geminiRes.status, lastErrBody);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    }
+
     if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
+      const errBody = await geminiRes.text().catch(() => lastErrBody);
       console.error('[statement-scan]', geminiRes.status, errBody);
-      return json({ error: 'Could not read this document right now — try again shortly.' }, 502);
+      const busy = geminiRes.status === 503 || geminiRes.status === 429;
+      return json({
+        error: busy
+          ? "Google's AI service is busy right now — please try again in a minute."
+          : 'Could not read this document right now — try again shortly.',
+      }, 502);
     }
 
     const data = await geminiRes.json();

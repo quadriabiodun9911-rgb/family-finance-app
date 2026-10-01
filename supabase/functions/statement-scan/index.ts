@@ -44,15 +44,19 @@ function json(body: unknown, status: number) {
   });
 }
 
-const SYSTEM_PROMPT = `You extract transaction line items from an image or PDF of a bank statement, till receipt, or invoice for a household's personal finance app.
+const SYSTEM_PROMPT = `You extract transaction line items from an image or PDF for a household's personal finance app. The document may be a bank statement, a till receipt, an invoice, or a screenshot of a payment app's transaction history (e.g. Alipay, WeChat Pay, a mobile banking app).
 
 Rules:
 - Only report rows you can actually read in the document. Never invent a transaction, date, or amount that isn't visibly present.
 - If a figure is blurry, cut off, or ambiguous, either omit that row or include it and say so in "warning" -- do not guess a value to fill the gap.
 - Skip non-transaction lines: running/opening/closing balance summaries, headers, footers, account numbers, page numbers.
+- Skip wallet top-ups, balance recharges, and transfers between the same person's own accounts (e.g. "Balance Recharge," "Top-up," moving money from a bank card into the app's wallet). These move money between places the household already has it, not new income or a real expense -- reporting them as income would double-count money tracked elsewhere.
+- Skip orders that are still pending, processing, or awaiting confirmation (e.g. "Waiting confirmation of receipt," "Pending," "Processing") -- only report transactions that have actually completed. An order that later completes will appear in a future statement/screenshot instead.
+- For a refund: if its amount reads as zero or isn't legible, skip that row rather than reporting a zero-amount transaction. A refund with a real amount is income (money came back).
 - "amount" is always a positive number; put the direction (money in vs out) in "direction".
+- If the document is in a language other than English, translate "description" into a short, clear English phrase -- keep recognizable merchant/brand names as-is (e.g. "Starbucks delivery" not a transliteration).
 - "date" should be YYYY-MM-DD. If the year isn't printed on the page, infer it from context (e.g. a visible statement period) rather than guessing a specific day wrong; if you truly cannot determine a date, use today's date and mention it in "warning".
-- If the image contains no legible transactions at all, return an empty transactions array and explain why in "warning".`;
+- If the image contains no legible, completed transactions at all, return an empty transactions array and explain why in "warning".`;
 
 const EXTRACT_TOOL = {
   name: 'extract_transactions',
@@ -62,7 +66,7 @@ const EXTRACT_TOOL = {
     properties: {
       documentType: {
         type: 'string',
-        enum: ['bank_statement', 'receipt', 'invoice', 'unknown'],
+        enum: ['bank_statement', 'receipt', 'invoice', 'app_screenshot', 'unknown'],
       },
       transactions: {
         type: 'array',

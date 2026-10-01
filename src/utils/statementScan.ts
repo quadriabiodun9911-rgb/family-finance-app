@@ -23,7 +23,7 @@ export interface ScannedTransaction {
 }
 
 export interface ScanResult {
-    documentType:  'bank_statement' | 'receipt' | 'invoice' | 'unknown';
+    documentType:  'bank_statement' | 'receipt' | 'invoice' | 'app_screenshot' | 'unknown';
     transactions:  ScannedTransaction[];
     warning?:      string;
 }

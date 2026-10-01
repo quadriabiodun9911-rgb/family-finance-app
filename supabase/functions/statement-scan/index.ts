@@ -30,8 +30,15 @@ const corsHeaders = {
 };
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-// Flash, not Pro -- the free tier is built around the Flash models.
-const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-2.0-flash';
+// 'gemini-flash-latest' is Google's own alias for whichever Flash model is
+// currently their recommended default -- not a pinned version. Pinning to
+// a specific dated model (e.g. gemini-2.0-flash, what this used to say)
+// works until Google retires that exact model, at which point every
+// request starts failing with a 404 until someone notices and updates the
+// string by hand. The alias re-points itself when Google rotates models,
+// so this function doesn't go stale on its own. GEMINI_MODEL still
+// overrides it if a specific pinned version is ever needed.
+const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
 
 // Gemini's inline-data request limit is far more generous than this, but a
 // single scanned statement has no business exceeding what Anthropic's

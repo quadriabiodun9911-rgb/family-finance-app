@@ -29,12 +29,11 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const QUICK_LINKS: { key: keyof RootStackParamList; label: string; icon: any; desc: string }[] = [
     { key: 'Reports', label: 'Daily · Weekly · Monthly', icon: 'newspaper', desc: 'Your financial pulse & reviews' },
     { key: 'Analysis', label: 'Spending Analysis', icon: 'analytics', desc: 'Why your spending is changing' },
-    { key: 'IncomeInsights', label: 'Income Intelligence', icon: 'rocket', desc: 'Ways to grow household income' },
+    { key: 'Income', label: 'Income Intelligence & Allocation', icon: 'rocket', desc: 'Where it comes from, and where it should go' },
     { key: 'SavingsInvestments', label: 'Net Worth', icon: 'diamond', desc: 'Savings, investments & net worth' },
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses', desc: 'Financial health & affordability' },
     { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half', desc: 'What could go wrong, and what to do' },
     { key: 'DebtIntelligence', label: 'Debt & Mortgage', icon: 'card', desc: 'Payoff timelines, interest & strategy' },
-    { key: 'IncomeAllocation', label: 'Income Allocation', icon: 'pie-chart', desc: 'Split income across Expenses, Savings & Emergency' },
     { key: 'Ledger', label: 'General Ledger', icon: 'book', desc: 'Every transaction, with running balances' },
 ];
 

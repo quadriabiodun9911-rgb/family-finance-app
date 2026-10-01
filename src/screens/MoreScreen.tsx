@@ -15,11 +15,10 @@ const ITEMS: { key: keyof RootStackParamList; label: string; icon: any }[] = [
     { key: 'SavingsInvestments', label: 'Savings, Investments & Net Worth', icon: 'diamond' },
     { key: 'Analysis', label: 'Spending Analysis', icon: 'analytics' },
     { key: 'Reports', label: 'Daily · Weekly · Monthly Reports', icon: 'newspaper' },
-    { key: 'IncomeInsights', label: 'Income Intelligence', icon: 'rocket' },
+    { key: 'Income', label: 'Income Intelligence & Allocation', icon: 'rocket' },
     { key: 'Coach', label: 'Ask the Coach', icon: 'chatbubble-ellipses' },
     { key: 'RiskDecision', label: 'Risk & Decisions', icon: 'shield-half' },
     { key: 'DebtIntelligence', label: 'Debt & Mortgage Intelligence', icon: 'card' },
-    { key: 'IncomeAllocation', label: 'Income Allocation', icon: 'pie-chart' },
     { key: 'Ledger', label: 'General Ledger', icon: 'book' },
 ];
 

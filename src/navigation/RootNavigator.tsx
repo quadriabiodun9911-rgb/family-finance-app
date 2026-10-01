@@ -15,14 +15,13 @@ import GoalDetailScreen from '../screens/GoalDetailScreen';
 import SavingsInvestmentsScreen from '../screens/SavingsInvestmentsScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import ReportsScreen from '../screens/ReportsScreen';
-import IncomeInsightsScreen from '../screens/IncomeInsightsScreen';
+import IncomeScreen from '../screens/IncomeScreen';
 import CoachScreen from '../screens/CoachScreen';
 import HouseholdScreen from '../screens/HouseholdScreen';
 import ImportStatementScreen from '../screens/ImportStatementScreen';
 import RiskDecisionScreen from '../screens/RiskDecisionScreen';
 import DebtIntelligenceScreen from '../screens/DebtIntelligenceScreen';
 import LedgerScreen from '../screens/LedgerScreen';
-import IncomeAllocationScreen from '../screens/IncomeAllocationScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -59,14 +58,13 @@ export default function RootNavigator() {
                         <Stack.Screen name="SavingsInvestments" component={SavingsInvestmentsScreen} />
                         <Stack.Screen name="Analysis" component={AnalysisScreen} />
                         <Stack.Screen name="Reports" component={ReportsScreen} />
-                        <Stack.Screen name="IncomeInsights" component={IncomeInsightsScreen} />
+                        <Stack.Screen name="Income" component={IncomeScreen} />
                         <Stack.Screen name="Coach" component={CoachScreen} />
                         <Stack.Screen name="Household" component={HouseholdScreen} />
                         <Stack.Screen name="ImportStatement" component={ImportStatementScreen} />
                         <Stack.Screen name="RiskDecision" component={RiskDecisionScreen} />
                         <Stack.Screen name="DebtIntelligence" component={DebtIntelligenceScreen} />
                         <Stack.Screen name="Ledger" component={LedgerScreen} />
-                        <Stack.Screen name="IncomeAllocation" component={IncomeAllocationScreen} />
                     </>
                 )}
             </Stack.Navigator>

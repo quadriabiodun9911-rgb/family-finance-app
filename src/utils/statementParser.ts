@@ -94,3 +94,31 @@ export function parseStatementCsv(csvText: string, categories: Category[]): { ro
     if (rows.length === 0) return { rows: [], error: 'No transaction rows could be read from this file.' };
     return { rows, error: null };
 }
+
+// Turns statement-scan's AI-extracted rows into the same ParsedStatementRow
+// shape parseStatementCsv produces, so a photographed receipt or scanned
+// bank statement lands in the exact same review-before-import list a CSV
+// import does -- no second review UI. Category guessing reuses
+// parseQuickAddText against the scanned description, same as the CSV path.
+export function scannedTransactionsToRows(
+    transactions: { date: string; description: string; amount: number; direction: 'income' | 'expense' }[],
+    categories: Category[],
+): ParsedStatementRow[] {
+    return transactions
+        .filter((t) => t.amount > 0)
+        .map((t) => {
+            const guess = parseQuickAddText(`${t.direction === 'income' ? 'received' : 'spent'} ${t.amount} ${t.description}`, categories);
+            const categoryId = guess.ok ? guess.categoryId : undefined;
+            const categoryLabel = guess.ok ? guess.categoryLabel : (t.direction === 'income' ? 'Other Income' : 'Other');
+            return {
+                clientId: generateId(),
+                date: parseDateFlexible(t.date),
+                description: t.description.trim() || (t.direction === 'income' ? 'Scanned income' : 'Scanned expense'),
+                amount: t.amount,
+                type: t.direction,
+                include: true,
+                categoryId,
+                categoryLabel,
+            };
+        });
+}

@@ -1,19 +1,26 @@
 // Supabase Edge Function: statement-scan
 //
 // Lets a household member photograph or upload a bank statement, till
-// receipt, or invoice and get back structured transaction rows, instead of
-// only being able to import a text-based CSV export (see
-// ImportStatementScreen.tsx, which previously had no path for a photo or a
-// scanned/flattened PDF with no text layer).
+// receipt, invoice, or payment-app screenshot (Alipay/WeChat Pay/mobile
+// banking) and get back structured transaction rows, instead of only being
+// able to import a text-based CSV export (see ImportStatementScreen.tsx,
+// which previously had no path for a photo or a scanned/flattened PDF with
+// no text layer).
 //
-// Claude reads the image/PDF directly (no separate OCR provider) and
-// returns transactions via forced tool use, which is far more reliable
-// than asking it to emit raw JSON in a text reply.
+// Uses Google's Gemini API (not Anthropic) specifically because Gemini's
+// free tier needs no payment method to start -- this is the no-cost path
+// for a personal/household app. Gemini reads the image/PDF directly (no
+// separate OCR provider) and returns transactions via a forced JSON
+// response schema, which is far more reliable than asking it to emit raw
+// JSON in a free-text reply.
 //
 // DEPLOYMENT (not done from this environment -- no Supabase CLI
 // credentials here): from a machine with the project linked,
 //   supabase functions deploy statement-scan
-//   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+//   supabase secrets set GEMINI_API_KEY=...
+// Get a free-tier key at https://aistudio.google.com/apikey (no card
+// required to start; check current free-tier limits there, since they
+// change over time).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -22,14 +29,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
-const MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-5';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+// Flash, not Pro -- the free tier is built around the Flash models.
+const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-2.0-flash';
 
-// Anthropic's own per-image limit is 5MB binary; PDFs can go larger, but a
-// single scanned statement has no business exceeding this either -- keep
-// one ceiling for both so a huge upload fails fast with a clear message
-// instead of timing out or getting silently rejected upstream.
+// Gemini's inline-data request limit is far more generous than this, but a
+// single scanned statement has no business exceeding what Anthropic's
+// vision limit used to cap this at either -- keeping the same ceiling here
+// means switching providers again later doesn't also mean re-tuning this.
 const MAX_BASE64_LEN = 8_000_000; // ~6MB binary
 const MAX_TRANSACTIONS = 300;
 
@@ -58,36 +65,37 @@ Rules:
 - "date" should be YYYY-MM-DD. If the year isn't printed on the page, infer it from context (e.g. a visible statement period) rather than guessing a specific day wrong; if you truly cannot determine a date, use today's date and mention it in "warning".
 - If the image contains no legible, completed transactions at all, return an empty transactions array and explain why in "warning".`;
 
-const EXTRACT_TOOL = {
-  name: 'extract_transactions',
-  description: 'Report every distinct transaction line item found in the document.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      documentType: {
-        type: 'string',
-        enum: ['bank_statement', 'receipt', 'invoice', 'app_screenshot', 'unknown'],
-      },
-      transactions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            date: { type: 'string', description: 'YYYY-MM-DD' },
-            description: { type: 'string' },
-            amount: { type: 'number', description: 'Always positive' },
-            direction: { type: 'string', enum: ['income', 'expense'] },
-          },
-          required: ['date', 'description', 'amount', 'direction'],
+// Gemini's structured-output schema format: a constrained subset of OpenAPI
+// 3.0, with UPPERCASE type names (its own Type enum, not JSON Schema's
+// lowercase "string"/"number"). Passed as generationConfig.responseSchema
+// below, alongside responseMimeType: "application/json", to force the
+// reply to actually match this shape instead of free text.
+const RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    documentType: {
+      type: 'STRING',
+      enum: ['bank_statement', 'receipt', 'invoice', 'app_screenshot', 'unknown'],
+    },
+    transactions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          date: { type: 'STRING', description: 'YYYY-MM-DD' },
+          description: { type: 'STRING' },
+          amount: { type: 'NUMBER', description: 'Always positive' },
+          direction: { type: 'STRING', enum: ['income', 'expense'] },
         },
-      },
-      warning: {
-        type: 'string',
-        description: 'Any caveat about image quality, illegible rows, or uncertain dates. Omit if none.',
+        required: ['date', 'description', 'amount', 'direction'],
       },
     },
-    required: ['documentType', 'transactions'],
+    warning: {
+      type: 'STRING',
+      description: 'Any caveat about image quality, illegible rows, or uncertain dates. Omit if none.',
+    },
   },
+  required: ['documentType', 'transactions'],
 };
 
 Deno.serve(async (req: Request) => {
@@ -115,7 +123,7 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await callerClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
     if (authError || !user) return json({ error: 'Not authenticated' }, 401);
 
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
     if (!apiKey) return json({ error: 'Statement scanning is not configured yet.' }, 503);
 
     const body = await req.json().catch(() => null);
@@ -132,50 +140,52 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Unsupported file type. Use a JPG, PNG, or PDF.' }, 400);
     }
 
-    const contentBlock = mediaType === 'application/pdf'
-      ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: base64 } }
-      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } };
-
-    const anthropicRes = await fetch(ANTHROPIC_API, {
+    const geminiRes = await fetch(`${GEMINI_API_BASE}/${MODEL}:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        tools: [EXTRACT_TOOL],
-        tool_choice: { type: 'tool', name: 'extract_transactions' },
-        messages: [{
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{
           role: 'user',
-          content: [
-            contentBlock,
-            { type: 'text', text: 'Extract every transaction line item from this document.' },
+          parts: [
+            { inline_data: { mime_type: mediaType, data: base64 } },
+            { text: 'Extract every transaction line item from this document.' },
           ],
         }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          maxOutputTokens: 8192,
+        },
       }),
     });
 
-    if (!anthropicRes.ok) {
-      const errBody = await anthropicRes.text();
-      console.error('[statement-scan]', anthropicRes.status, errBody);
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.text();
+      console.error('[statement-scan]', geminiRes.status, errBody);
       return json({ error: 'Could not read this document right now — try again shortly.' }, 502);
     }
 
-    const data = await anthropicRes.json();
-    const toolUse = (data.content ?? []).find((block: { type: string }) => block.type === 'tool_use');
-    if (!toolUse) return json({ error: 'Could not read this document — try a clearer photo.' }, 502);
+    const data = await geminiRes.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof text !== 'string' || !text) {
+      console.error('[statement-scan] no text in response', JSON.stringify(data).slice(0, 500));
+      return json({ error: 'Could not read this document — try a clearer photo.' }, 502);
+    }
 
-    const input = toolUse.input ?? {};
-    const transactions = Array.isArray(input.transactions) ? input.transactions.slice(0, MAX_TRANSACTIONS) : [];
+    let parsed: { documentType?: string; transactions?: unknown; warning?: string };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return json({ error: 'Could not read this document — try a clearer photo.' }, 502);
+    }
+
+    const transactions = Array.isArray(parsed.transactions) ? parsed.transactions.slice(0, MAX_TRANSACTIONS) : [];
 
     return json({
-      documentType: input.documentType ?? 'unknown',
+      documentType: parsed.documentType ?? 'unknown',
       transactions,
-      warning: typeof input.warning === 'string' ? input.warning : undefined,
+      warning: typeof parsed.warning === 'string' ? parsed.warning : undefined,
     }, 200);
   } catch (e) {
     console.error('[statement-scan]', e);
